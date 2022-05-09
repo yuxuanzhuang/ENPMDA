@@ -26,7 +26,24 @@ parallel analysis for ensemble simulations
 Features
 --------
 
-* TODO
+* Parallel analysis for ensemble simulations.
+* Dataframe for storing and accessing results.
+* dask-based task scheduler, suitable for both workstations and clusters.
+* Expandable analysis library powered by MDAnalysis.
+* Functions to pre-process raw trajectories..
+* On-the-fly transformation to group multimeric proteins.
+
+TODO
+----
+
+* Add more analysis functions.
+* Add unit testing
+* Benchmarking
+* Retrieve numerical results 
+* switch between save to file and return values
+* Add more documentation
+* Add mechanims to cancel running tasks
+* Add mechanims to test and report erros when adding features
 
 Credits
 -------
