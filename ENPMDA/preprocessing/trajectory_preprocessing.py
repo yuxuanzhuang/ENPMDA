@@ -1,6 +1,5 @@
-import logging
-logging.basicConfig(filename="logs.log", level=logging.INFO)
 import os.path
+import warnings
 
 import gc
 import pickle
@@ -15,7 +14,7 @@ import pandas as pd
 import dask
 import dask.dataframe as dd
 
-from ..util.grouphug import GroupHug
+from ..utils.grouphug import GroupHug
 
 
 class TrajectoryEnsemble(object):
@@ -86,13 +85,11 @@ class TrajectoryEnsemble(object):
 
     def preprocessing_raw_trajectory(self, trajectory):
         #    print(trajectory)
-        with open(self.filename + '/log.log', 'a') as f:
-            f.write(trajectory + '\n')
-        u = mda.Universe(trajectory + '/ca.pdb',
-                        trajectory + '/md.xtc')
-
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+            u = mda.Universe(trajectory + '/ca.pdb',
+                        trajectory + '/md.xtc')
+
             u_bond = mda.Universe(trajectory + '/md.tpr')
         u.add_bonds(u_bond.bonds.to_indices())
 
@@ -111,8 +108,6 @@ class TrajectoryEnsemble(object):
         
         with mda.Writer(trajectory + '/protein.xtc', u.select_atoms('protein').n_atoms) as W_prot, mda.Writer(trajectory + '/system.xtc', u.atoms.n_atoms) as W_sys:
             for time, ts in enumerate(u.trajectory):
-                with open(trajectory + '/write.log', 'a') as f:
-                    f.write(str(time) + '\n')
                 W_prot.write(u.select_atoms('protein'))
                 W_sys.write(u.atoms)
 
@@ -121,8 +116,6 @@ class TrajectoryEnsemble(object):
         u.atoms.write(trajectory + '/system.pdb')
                 
                 
-        with open(self.filename + '/log.log', 'a') as f:
-            f.write(trajectory + ' done' + '\n')
         # return u
         with open(self.filename + '_'.join(trajectory.split('/')[-3:-1]) + '.pickle', 'wb') as f:
             pickle.dump(u, f)
@@ -136,13 +129,9 @@ class TrajectoryEnsemble(object):
 
     def load_protein(self, trajectory):
         #    print(trajectory)
-        with open(self.filename + '/log.log', 'a') as f:
-            f.write(trajectory + '\n')
         u = mda.Universe(trajectory + '/protein.pdb',
                         trajectory + '/protein.xtc')
 
-        with open(self.filename + '/log.log', 'a') as f:
-            f.write(trajectory + ' done' + '\n')
         # return u
         with open(self.filename + '_'.join(trajectory.split('/')[-3:-1]) + '_prot.pickle', 'wb') as f:
             pickle.dump(u, f)
@@ -151,13 +140,9 @@ class TrajectoryEnsemble(object):
 
     def load_system(self, trajectory):
         #    print(trajectory)
-        with open(self.filename + '/log.log', 'a') as f:
-            f.write(trajectory + '\n')
         u = mda.Universe(trajectory + '/ca.pdb',
                         trajectory + '/system.xtc')
 
-        with open(self.filename + '/log.log', 'a') as f:
-            f.write(trajectory + ' done' + '\n')
     # return u
         with open(self.filename + '_'.join(trajectory.split('/')[-3:-1]) + '_sys.pickle', 'wb') as f:
             pickle.dump(u, f)
@@ -166,4 +151,4 @@ class TrajectoryEnsemble(object):
 
     @property
     def filename(self):
-        return self.pwd + '/' + self.ensemble_name
+        return self.pwd + '/' + self.ensemble_name + '/'
