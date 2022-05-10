@@ -9,11 +9,13 @@ import pickle
 import shutil
 
 from .analysis.base import AnalysisResult
+from .preprocessing import TrajectoryEnsemble
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 meta_data_list = ["universe",
                  "universe_system",
                  "system",
+                 "md_name",
                  "frame",
                  "traj_time"]
 
@@ -28,36 +30,34 @@ class MDDataFrame(object):
         self.timestamp = timestamp
 
     def add_traj_ensemble(self,
-                     trajectory_prot_files,
-                     trajectory_sys_files,
-                     n_partitions,
+                     trajectory_ensemble: TrajectoryEnsemble,
+                     npartitions,
                      stride=1
                      ):
         """
-        trajectory_prot_files: list of pickled mda.Universe files for protein
-        trajectory_sys_files: list of pickled mda.Universe files for system
         """
-        self.trajectory_prot_files = trajectory_prot_files
-        self.trajectory_sys_files = trajectory_sys_files
-    
-        if len(trajectory_prot_files) != len(trajectory_sys_files):
-            raise ValueError('Number of protein and system trajectories must be the same')
+        self.trajectory_ensemble = trajectory_ensemble
 
-        self.n_partitions = n_partitions
+        self.trajectory_files = trajectory_ensemble.trajectory_files
+        self.protein_trajectory_files = trajectory_ensemble.protein_trajectory_files
+        self.system_trajectory_files = trajectory_ensemble.system_trajectory_files
+
+
+        self.npartitions = npartitions
         self.stride = stride
 
         meta_data_jobs = []
-        for ind, trajectory in enumerate(self.trajectory_prot_files):
+        for ind, trajectory in enumerate(self.protein_trajectory_files):
             meta_data_jobs.append(
                 dask.delayed(self._append_metadata)(
                 trajectory, system=ind))
 
-        meta_data = dask.compute(meta_data_jobs)
-        
-        for i, trajectory in enumerate(self.trajectory_prot_files):
-            self.dataframe = self.dataframe.append(
+        meta_data = dask.compute(meta_data_jobs)[0]
+    
+        for i, trajectory in enumerate(self.protein_trajectory_files):
+            self.dataframe = pd.concat([self.dataframe,
                 pd.DataFrame(meta_data[i],
-                             columns=self.dataframe.columns),
+                             columns=self.dataframe.columns)],
                 ignore_index=True
             )
 
@@ -68,10 +68,10 @@ class MDDataFrame(object):
 #            print(
 #                f'{df.pathway.iloc[-1]} system {df.seed.iloc[-1]}: {df.traj_time.iloc[-1] / 1000} ns')
 
-        self.init_analysis_results(n_partitions=self.n_partitions)
+        self.init_analysis_results(npartitions=self.npartitions)
 
-    def _append_metadata(self, universe, system, stride):
-        universe_system = self.trajectory_sys_files[system]
+    def _append_metadata(self, universe, system):
+        universe_system = self.system_trajectory_files[system]
 
         u = pickle.load(open(universe, "rb"))
         u_sys = pickle.load(open(universe_system, "rb"))
@@ -82,7 +82,7 @@ class MDDataFrame(object):
         md_name = u.trajectory.filename
         timestep = u.trajectory.dt
 
-        for i in range(0, u.trajectory.n_frames, stride):
+        for i in range(0, u.trajectory.n_frames, self.stride):
             rep_data.append([universe,
                              universe_system,
                              system,
@@ -93,10 +93,10 @@ class MDDataFrame(object):
         del u
         return rep_data
 
-    def init_analysis_results(self, n_partitions):
+    def init_analysis_results(self, npartitions):
         self.dd_dataframe = dd.from_pandas(self.dataframe,
-                                           n_partitions=n_partitions)
-        print('Dask dataframe generated with {} partitions'.format(n_partitions))
+                                           npartitions==npartitions)
+        print('Dask dataframe generated with {} partitions'.format(npartitions))
         self.analysis_results = AnalysisResult(self.dd_dataframe,
                                                working_dir=self.working_dir,
                                                timestamp=self.timestamp)

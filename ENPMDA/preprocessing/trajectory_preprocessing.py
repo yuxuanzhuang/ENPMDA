@@ -11,6 +11,8 @@ import dask
 from ..utils.grouphug import GroupHug
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
 class TrajectoryEnsemble(object):
     def __init__(self,
                  ensemble_name,
@@ -63,7 +65,7 @@ class TrajectoryEnsemble(object):
                     load_job_list.append(dask.delayed(self.preprocessing_raw_trajectory)(topology, trajectory))
                 else:
                     print(trajectory + ' on hold.')
-                    load_job_list.append(dask.delayed(self.load_preprocessing_trajectory)(topology, trajectory))
+                    load_job_list.append(dask.delayed(self.load_preprocessing_trajectory)(trajectory))
 
         self.trajectory_files = dask.compute(load_job_list)[0]
         print('dask finished')
@@ -88,7 +90,7 @@ class TrajectoryEnsemble(object):
         load_job_list = []
         for trajectory in self.trajectory_list:
             traj_path = os.path.dirname(trajectory)
-            if os.path.isfile(trajectory + "/system.xtc"):
+            if os.path.isfile(traj_path + "/system.xtc"):
                 load_job_list.append(dask.delayed(self.load_system)(trajectory))
         self.system_trajectory_files = dask.compute(load_job_list)[0]
         print('dask finished')
@@ -147,7 +149,7 @@ class TrajectoryEnsemble(object):
         gc.collect()
         return self.filename + '_'.join(trajectory.split('/')) + '.pickle'
 
-    def load_preprocessing_trajectory(self,trajectory):
+    def load_preprocessing_trajectory(self, trajectory):
         return self.filename + '_'.join(trajectory.split('/')) + '.pickle'
 
     def load_protein(self, trajectory):
@@ -160,9 +162,7 @@ class TrajectoryEnsemble(object):
         return self.filename + '_'.join(trajectory.split('/')) + '_prot.pickle'
 
     def load_system(self, trajectory):
-        #    print(trajectory)
         traj_path = os.path.dirname(trajectory)
-
         u = mda.Universe(traj_path + '/system.pdb',
                         traj_path + '/system.xtc')
 

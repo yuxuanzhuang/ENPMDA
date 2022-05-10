@@ -9,21 +9,19 @@ class AnalysisResult(dict):
     def __init__(self,
                  md_data,
                  working_dir,
-                 timestamp,
-                 u_ref):
+                 timestamp):
         """
         md_data: dask.dataframe.core.DataFrame
         store all the data
 
-        u_ref: MDAnalysis.Universe
         reference structures
         """
         super().__init__()
 
         self.md_data = md_data
         self.working_dir = working_dir
-        self.ref_info = {}
-        self.u_ref = u_ref
+#        self.ref_info = {}
+#        self.u_ref = u_ref
 
         self.timestamp = timestamp
 
@@ -54,8 +52,8 @@ class AnalysisResult(dict):
                                                       token=item_name
                                                       ).persist()
 
-        self.ref_info[item_name] = analysis_function(
-            **kwargs).run_analysis(self.u_ref, 0, 3, 1)
+#        self.ref_info[item_name] = analysis_function(
+#            **kwargs).run_analysis(self.u_ref, 0, 3, 1)
 
     def save_results(self):
         for item, df in self.items():
