@@ -1,3 +1,15 @@
+import numpy as np
+import itertools
+
+from MDAnalysis.analysis.rms import RMSD
+from MDAnalysis.analysis.distances import distance_array
+from MDAnalysis.lib.distances import calc_bonds
+from MDAnalysis.analysis.distances import self_distance_array
+from MDAnalysis.analysis.dihedrals import Dihedral as mda_dihedral
+
+from .base import DaskChunkMdanalysis
+
+
 class get_backbonetorsion(DaskChunkMdanalysis):
     name = 'torsion'
 
@@ -291,7 +303,7 @@ class get_c_alpha_distance(DaskChunkMdanalysis):
                 distance_matrix = distance_array(np.concatenate([ag.positions for ag in ag_sel1_collection]),
                                                  np.concatenate([ag.positions for ag in ag_sel2_collection]))
                 filtered_distance_matrix = []
-                for i, j in arg_comp_candidates:
+                for i, j in self.arg_comp_candidates:
                     filtered_distance_matrix.append(distance_matrix[i, j])
 
                 r_ts.extend(filtered_distance_matrix)
@@ -299,7 +311,7 @@ class get_c_alpha_distance(DaskChunkMdanalysis):
 
         self._feature_info = []
         for selection1, selection2 in selection_comb:
-            for feature_chain in feature_list:
+            for feature_chain in self.feature_list:
                 self._feature_info.append(
                     selection1.split()[0] + '_' + feature_chain)
 
@@ -385,7 +397,7 @@ class get_c_alpha_distance_filtered_inverse(DaskChunkMdanalysis):
                 distance_matrix = distance_array(np.concatenate([ag.positions for ag in ag_sel1_collection]),
                                                  np.concatenate([ag.positions for ag in ag_sel2_collection]))
                 filtered_distance_matrix = []
-                for i, j in filtered_candidatess:
+                for i, j in self.filtered_candidate:
                     filtered_distance_matrix.append(
                         1.0 / distance_matrix[i, j])
 
@@ -394,7 +406,7 @@ class get_c_alpha_distance_filtered_inverse(DaskChunkMdanalysis):
 
         self._feature_info = []
         for selection1, selection2 in selection_comb:
-            for feature_chain in feature_list:
+            for feature_chain in self.feature_list:
                 self._feature_info.append(
                     selection1.split()[0] + '_' + feature_chain)
 
@@ -421,21 +433,21 @@ class get_rmsd_ref(DaskChunkMdanalysis):
         name_ca = universe.select_atoms('name CA')
         rmsd_bgt = RMSD(
             name_ca,
-            u_ref.select_atoms('name CA'),
+            self.u_ref.select_atoms('name CA'),
             ref_frame=0).run(
             start,
             stop,
             step)
         rmsd_epj = RMSD(
             name_ca,
-            u_ref.select_atoms('name CA'),
+            self.u_ref.select_atoms('name CA'),
             ref_frame=1).run(
             start,
             stop,
             step)
         rmsd_pnu = RMSD(
             name_ca,
-            u_ref.select_atoms('name CA'),
+            self.u_ref.select_atoms('name CA'),
             ref_frame=2).run(
             start,
             stop,

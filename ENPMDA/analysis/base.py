@@ -1,5 +1,16 @@
+import os
+import dask
+import numpy as np
+import uuid
+import pickle
+import itertools
+
 class AnalysisResult(dict):
-    def __init__(self, md_data, working_dir, u_ref=u_ref):
+    def __init__(self,
+                 md_data,
+                 working_dir,
+                 timestamp,
+                 u_ref):
         """
         md_data: dask.dataframe.core.DataFrame
         store all the data
@@ -44,7 +55,7 @@ class AnalysisResult(dict):
                                                       ).persist()
 
         self.ref_info[item_name] = analysis_function(
-            **kwargs).run_analysis(u_ref, 0, 3, 1)
+            **kwargs).run_analysis(self.u_ref, 0, 3, 1)
 
     def save_results(self):
         for item, df in self.items():
@@ -157,4 +168,3 @@ class DaskChunkMdanalysis(object):
     @property
     def feature_info_loc(self):
         return self.filename + self.name + '_feature_info.npy'
-

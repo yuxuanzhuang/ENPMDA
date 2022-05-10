@@ -1,23 +1,14 @@
-from genericpath import exists
-from MDAnalysis.analysis.rms import RMSD
-from MDAnalysis.analysis.distances import distance_array
-from MDAnalysis.lib.distances import calc_bonds
-from MDAnalysis.analysis.distances import self_distance_array
-from MDAnalysis.analysis.dihedrals import Dihedral as mda_dihedral
 from datetime import datetime
 import numpy as np
-import uuid
 import dask.dataframe as dd
 import dask
 import pandas as pd
 import MDAnalysis as mda
-import itertools
 import os
 import pickle
-import gc
-import logging
-import warnings
 import shutil
+
+from .analysis.base import AnalysisResult
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 meta_data_list = ["universe",
@@ -28,14 +19,15 @@ meta_data_list = ["universe",
 
 
 class MDDataFrame(object):
-    def __init__(self, meta_data_list=meta_data_list):
+    def __init__(self, meta_data_list=meta_data_list, timestamp=timestamp):
         self.dataframe = pd.DataFrame(
             columns=meta_data_list
         )
         self.computed = False
         self.working_dir = os.getcwd() + '/'
+        self.timestamp = timestamp
 
-    def add_metadata(self,
+    def add_traj_ensemble(self,
                      trajectory_prot_files,
                      trajectory_sys_files,
                      n_partitions,
@@ -105,7 +97,9 @@ class MDDataFrame(object):
         self.dd_dataframe = dd.from_pandas(self.dataframe,
                                            n_partitions=n_partitions)
         print('Dask dataframe generated with {} partitions'.format(n_partitions))
-        self.analysis_results = AnalysisResult(self.dd_dataframe, working_dir=self.working_dir)
+        self.analysis_results = AnalysisResult(self.dd_dataframe,
+                                               working_dir=self.working_dir,
+                                               timestamp=self.timestamp)
 
     def add_analysis(self, analysis):
         self.analysis_results.add_column_to_results(analysis)
@@ -147,7 +141,7 @@ class MDDataFrame(object):
                 for common_col in common_cols:
                     md_data_old[common_col] = self.md_data[common_col]
                 
-                shutil.copyfile(f'{filename}.pickle', filename + '_' + timestamp + '.pickle')
+                shutil.copyfile(f'{filename}.pickle', filename + '_' + self.timestamp + '.pickle')
                 md_data_old.to_pickle(f'{filename}.pickle')
             else:
                 print('No changes')
