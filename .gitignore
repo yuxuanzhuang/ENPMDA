@@ -104,3 +104,9 @@ ENV/
 # IDE settings
 .vscode/
 .idea/
+*.npz
+*.lock
+system.pdb
+system.xtc
+protein.pdb
+protein.xtc
