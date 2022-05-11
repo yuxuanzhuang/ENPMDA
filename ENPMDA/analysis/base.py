@@ -58,7 +58,7 @@ class AnalysisResult(dict):
     def save_results(self):
         for item, df in self.items():
             if isinstance(df, dask.dataframe.core.DataFrame):
-                df.to_csv(self.working_dir + 'analysis_results/' + str(item) + '-*.csv')
+                df.to_csv(self.working_dir + '/analysis_results/' + str(item) + '-*.csv')
 
     def filter_result(self, column, filter_threshold):
         """
@@ -97,7 +97,7 @@ class AnalysisResult(dict):
 
     @property
     def filename(self, timestamp=None):
-        return self.working_dir + 'analysis_results/' + self.timestamp + '/'
+        return self.working_dir + '/analysis_results/' + self.timestamp + '/'
 
 
 class DaskChunkMdanalysis(object):

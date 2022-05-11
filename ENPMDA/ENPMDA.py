@@ -1,4 +1,5 @@
 from datetime import datetime
+import warnings
 import numpy as np
 import dask.dataframe as dd
 import dask
@@ -17,17 +18,21 @@ meta_data_list = ["universe",
                  "system",
                  "md_name",
                  "frame",
-                 "traj_time"]
+                 "traj_time",
+                 "stride",
+                 ]
 
 
 class MDDataFrame(object):
-    def __init__(self, meta_data_list=meta_data_list, timestamp=timestamp):
+    def __init__(self, location='.', meta_data_list=meta_data_list, timestamp=timestamp):
         self.dataframe = pd.DataFrame(
             columns=meta_data_list
         )
         self.computed = False
-        self.working_dir = os.getcwd() + '/'
+        self.working_dir = os.getcwd() + '/' + location + '/'
         self.timestamp = timestamp
+        self.trajectory_ensemble = None
+        self.analysis_list = []
 
     def add_traj_ensemble(self,
                      trajectory_ensemble: TrajectoryEnsemble,
@@ -36,6 +41,9 @@ class MDDataFrame(object):
                      ):
         """
         """
+        if self.trajectory_ensemble is not None:
+            raise ValueError('Trajectory ensemble already added')
+
         self.trajectory_ensemble = trajectory_ensemble
 
         self.trajectory_files = trajectory_ensemble.trajectory_files
@@ -88,7 +96,8 @@ class MDDataFrame(object):
                              system,
                              md_name,
                              i,
-                             i * timestep
+                             i * timestep,
+                             self.stride
                              ])
         del u
         return rep_data
@@ -101,28 +110,38 @@ class MDDataFrame(object):
                                                working_dir=self.working_dir,
                                                timestamp=self.timestamp)
 
-    def add_analysis(self, analysis):
-        self.analysis_results.add_column_to_results(analysis)
+    def add_analysis(self, analysis, overwrite=False):
+        if analysis.name in self.analysis_list and not overwrite:
+            warnings.warn(f'Analysis {analysis.name} already added, add overwrite=True to overwrite',
+            stacklevel=2)
+        elif analysis.name in self.analysis_list and overwrite:
+            warnings.warn(f'Analysis {analysis.name} already added, overwriting!',
+            stacklevel=2)
+            self.analysis_results.add_column_to_results(analysis)
+        else:
+            self.analysis_list.append(analysis.name)
+            self.analysis_results.add_column_to_results(analysis)
+
 
     def compute(self):
         self.analysis_results.compute()
         self.analysis_results.append_to_dataframe(self.dataframe)
         self.computed = True
 
-    def save(self, filename):
+    def save(self, filename='dataframe'):
         if not self.computed:
             self.compute()
 
-        if not os.path.exists(f'{filename}.pickle'):
-            with open(f'{filename}.pickle', 'wb') as f:
-                pickle.dump(self, f)
+        if not os.path.exists(f'{self.working_dir}{filename}.pickle'):
+            with open(f'{self.working_dir}{filename}.pickle', 'wb') as f:
+                pickle.dump(self.dataframe, f)
         else:
-            md_data_old = pickle.load(open(f'{filename}.pickle', 'rb'))
+            md_data_old = pickle.load(open(f'{self.working_dir}{filename}.pickle', 'rb'))
 
             if set(md_data_old.universe) != set(self.dataframe.universe):
                 print('New seeds added')
-                with open(f'{filename}.pickle', 'wb') as f:
-                    pickle.dump(self, f)
+                with open(f'{self.working_dir}{filename}.pickle', 'wb') as f:
+                    pickle.dump(self.dataframe, f)
             elif md_data_old.shape[0] != self.dataframe.shape[0]:
                 print('N.frame changed')
 
@@ -141,9 +160,12 @@ class MDDataFrame(object):
                 for common_col in common_cols:
                     md_data_old[common_col] = self.md_data[common_col]
                 
-                shutil.copyfile(f'{filename}.pickle', filename + '_' + self.timestamp + '.pickle')
-                md_data_old.to_pickle(f'{filename}.pickle')
+                shutil.copyfile(f'{self.working_dir}{filename}.pickle', f'{self.working_dir}{filename}_{self.timestamp}.pickle')
+                md_data_old.to_pickle(f'{self.working_dir}{filename}.pickle')
             else:
                 print('No changes')
-                with open(f'{filename}.pickle', 'wb') as f:
-                    pickle.dump(self, f)
+                with open(f'{self.working_dir}{filename}.pickle', 'wb') as f:
+                    pickle.dump(self.dataframe, f)
+
+        with open(f'{self.working_dir}{filename}_md_dataframe.pickle', 'wb') as f:
+                pickle.dump(self, f)

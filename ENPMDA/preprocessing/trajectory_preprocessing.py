@@ -101,6 +101,7 @@ class TrajectoryEnsemble(object):
     def preprocessing_raw_trajectory(self, topology, trajectory):
         #    print(trajectory)
         traj_path = os.path.dirname(trajectory)
+        # to ignore most unnecessary warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             u = mda.Universe(topology,
@@ -109,35 +110,35 @@ class TrajectoryEnsemble(object):
             # u_bond = mda.Universe(trajectory + '/md.tpr')
             # u.add_bonds(u_bond.bonds.to_indices())
 
-        u_prot = u.select_atoms('protein')
-        if self.fix_chain:
-            prot_chain_list = []
-            for chain in u_prot.segments:
-                prot_chain_list.append(chain.atoms)
-            non_prot = u.select_atoms('not protein')
-            prot_group = GroupHug(*prot_chain_list)
-            wrap = trans.wrap(non_prot)
-            unwrap = trans.unwrap(u.atoms)
-            center_in_box = trans.center_in_box(u_prot)
+            u_prot = u.select_atoms('protein')
+            if self.fix_chain:
+                prot_chain_list = []
+                for chain in u_prot.segments:
+                    prot_chain_list.append(chain.atoms)
+                non_prot = u.select_atoms('not protein')
+                prot_group = GroupHug(*prot_chain_list)
+                wrap = trans.wrap(non_prot)
+                unwrap = trans.unwrap(u.atoms)
+                center_in_box = trans.center_in_box(u_prot)
 
-        rot_fit_trans = trans.fit_rot_trans(u.select_atoms('name CA'), u.select_atoms('name CA'))
-        if self.fix_chain:
-            u.trajectory.add_transformations(*[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
-        else:
-            u.trajectory.add_transformations(*[rot_fit_trans])
+            rot_fit_trans = trans.fit_rot_trans(u.select_atoms('name CA'), u.select_atoms('name CA'))
+            if self.fix_chain:
+                u.trajectory.add_transformations(*[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
+            else:
+                u.trajectory.add_transformations(*[rot_fit_trans])
 
-        with mda.Writer(traj_path + '/protein.xtc',
-                        u.select_atoms('protein').n_atoms) as W_prot, \
-             mda.Writer(traj_path + '/system.xtc',
-                        u.atoms.n_atoms) as W_sys:
-            for time, ts in enumerate(u.trajectory):
-                W_prot.write(u.select_atoms('protein'))
-                W_sys.write(u.atoms)
+            with mda.Writer(traj_path + '/protein.xtc',
+                            u.select_atoms('protein').n_atoms) as W_prot, \
+                mda.Writer(traj_path + '/system.xtc',
+                            u.atoms.n_atoms) as W_sys:
+                for time, ts in enumerate(u.trajectory):
+                    W_prot.write(u.select_atoms('protein'))
+                    W_sys.write(u.atoms)
 
                 
-        u.select_atoms('protein').write(traj_path + '/protein.pdb')
-        u.atoms.write(traj_path + '/system.pdb')
-                
+            u.select_atoms('protein').write(traj_path + '/protein.pdb')
+            u.atoms.write(traj_path + '/system.pdb')
+                    
                 
         # return u
         with open(self.filename + '_'.join(trajectory.split('/')) + '.pickle', 'wb') as f:
