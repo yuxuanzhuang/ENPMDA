@@ -104,7 +104,7 @@ class MDDataFrame(object):
 
     def init_analysis_results(self, npartitions):
         self.dd_dataframe = dd.from_pandas(self.dataframe,
-                                           npartitions==npartitions)
+                                           npartitions=npartitions)
         print('Dask dataframe generated with {} partitions'.format(npartitions))
         self.analysis_results = AnalysisResult(self.dd_dataframe,
                                                working_dir=self.working_dir,
