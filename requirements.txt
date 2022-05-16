@@ -1,4 +1,5 @@
--e git+ssh://git@github.com/yuxuanzhuang/mdanalysis.git@3f5f0a1a273ff1b951c5b4df330118185c3af12e#egg=MDAnalysis&subdirectory=package
+#-e git+ssh://git@github.com/yuxuanzhuang/mdanalysis.git@3f5f0a1a273ff1b951c5b4df330118185c3af12e#egg=MDAnalysis&subdirectory=package
+mdanalysis
 dask==2022.4.1
 distributed==2022.4.1
 tqdm
