@@ -12,6 +12,12 @@ Welcome to Ensemble Analysis's documentation!
    authors
    history
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Documentation:
+
+   .. automodule:: ENPMDA.MDDataFrame
+   .. automodule:: ENPMDA.preprocessing.TrajectoryEnsemble
 
 Indices and tables
 ==================

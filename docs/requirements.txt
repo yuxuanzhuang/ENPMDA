@@ -6,6 +6,8 @@ sphinxcontrib-bibtex
 matplotlib
 networkx
 sphinxcontrib-katex
+sphinx_sitemap
+sphinx_rtd_theme
 sphinx-gallery
 memory_profiler
 nbconvert

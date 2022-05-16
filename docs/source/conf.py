@@ -18,9 +18,12 @@
 # absolute, like shown here.
 #
 import ENPMDA
+
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('../../'))
+import sphinx_rtd_theme
+
 
 
 # -- General configuration ---------------------------------------------
@@ -34,7 +37,13 @@ sys.path.insert(0, os.path.abspath('..'))
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.viewcode',
               'myst_parser',
-              'nbsphinx']
+              'nbsphinx',
+              'sphinx.ext.intersphinx',
+              'sphinx.ext.mathjax',
+              'sphinx.ext.napoleon',
+              'sphinx.ext.todo',
+              'sphinx_sitemap',
+              'sphinx_rtd_theme']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
