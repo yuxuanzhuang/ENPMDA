@@ -32,10 +32,10 @@ class TestDDataFrameCreation(object):
                                             topology_list=ensemble_ala_top,
                                             trajectory_list=ensemble_ala_traj,
                                             tpr_list=ensemble_ala_tpr,
-                                            updating=True,
+                                            updating=False,
                                             only_raw=False)
         assert_equal(traj_ensembles.filename,
-                     os.getcwd() + tempdir + '/' + 'test_traj_ensemble' + '/',
+                     os.getcwd() + '//' + tempdir + '/' + 'test_traj_ensemble' + '/',
                      "ensemble name is not set correctly")
 
     def test_initialize_mddataframe(self, tempdir):
@@ -63,7 +63,7 @@ class TestAddTrajEnsemble(object):
                                   topology_list=ensemble_ala_top,
                                   trajectory_list=ensemble_ala_traj,
                                   tpr_list=ensemble_ala_tpr,
-                                  updating=True,
+                                  updating=False,
                                   only_raw=False)
 
     def test_add_trajectory_ensemble(self, md_dataframe, traj_ensemble):
