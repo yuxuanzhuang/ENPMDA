@@ -40,7 +40,7 @@ Features
 
 Workflow Illustration
 ---------------------
-.. image:: ./_static/example.png
+.. image:: docs/source/_static/example.png
   :width: 700
   :alt: Illustration of the ensemble analysis workflow.
 
