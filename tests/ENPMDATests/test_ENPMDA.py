@@ -35,7 +35,7 @@ class TestDDataFrameCreation(object):
                                             updating=True,
                                             only_raw=False)
         assert_equal(traj_ensembles.filename,
-                     os.getcwd() + '/' + tempdir + '/' + 'test_traj_ensemble' + '/',
+                     os.getcwd() + tempdir + '/' + 'test_traj_ensemble' + '/',
                      "ensemble name is not set correctly")
 
     def test_initialize_mddataframe(self, tempdir):
