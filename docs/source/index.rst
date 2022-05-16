@@ -8,7 +8,6 @@ Welcome to Ensemble Analysis's documentation!
    readme
    installation
    usage
-   modules
    contributing
    authors
    history
@@ -16,5 +15,4 @@ Welcome to Ensemble Analysis's documentation!
 Indices and tables
 ==================
 * :ref:`genindex`
-* :ref:`modindex`
 * :ref:`search`

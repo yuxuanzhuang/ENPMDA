@@ -1,0 +1,14 @@
+dask
+numpy
+sphinx
+nbsphinx
+sphinxcontrib-bibtex
+matplotlib
+networkx
+sphinxcontrib-katex
+sphinx-gallery
+memory_profiler
+nbconvert
+jupyter
+tqdm
+myst-parser
