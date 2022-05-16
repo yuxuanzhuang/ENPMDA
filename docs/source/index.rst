@@ -1,5 +1,5 @@
 Welcome to Ensemble Analysis's documentation!
-======================================
+=============================================
 
 .. toctree::
    :maxdepth: 2
@@ -7,10 +7,11 @@ Welcome to Ensemble Analysis's documentation!
 
    readme
    installation
-   usage
+   examples/examples
    contributing
    authors
    history
+
 
 Indices and tables
 ==================
