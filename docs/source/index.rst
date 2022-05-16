@@ -1,23 +1,31 @@
 Welcome to Ensemble Analysis's documentation!
 =============================================
 
+.. warning::
+    This is still under constrution.
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
    readme
    installation
-   examples/examples
    contributing
    authors
    history
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Documentation:
+    :maxdepth: 0
+    :caption: Documentations:
 
-   .. automodule:: ENPMDA.MDDataFrame
-   .. automodule:: ENPMDA.preprocessing.TrajectoryEnsemble
+    documentations
+
+.. toctree::
+    :maxdepth: 0
+    :caption: Examples:
+
+    examples/examples
+
 
 Indices and tables
 ==================

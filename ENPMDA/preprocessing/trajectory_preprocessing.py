@@ -1,15 +1,17 @@
 """\
-=========================================================
-TrajectoryEnsemble --- :mod:`ENPMDA.preprocessing.TrajectoryEnsemble`
-=========================================================
+==================
+TrajectoryEnsemble
+==================
 The :class:`~ENPMDA.preprocessing.TrajectoryEnsemble` class both store
-the information of simulations in the ensemble and preload it by serialization.
-It can also apply on-the-fly transformations to the trajectories and extract
-selected components (e.g. only protein) to seperated files.
+the information of simulations in the ensemble and preload it by
+serialization. It can also apply on-the-fly transformations to the
+trajectories and extract selected components (e.g. only protein)
+to seperated files.
 
 A ``TrajectoryEnsemble`` is created from files::
-  from ENPMDA.preprocessing import TrajectoryEnsemble
-  traj_ensembles = TrajectoryEnsemble(ensemble_name='ensemble',
+
+    from ENPMDA.preprocessing import TrajectoryEnsemble
+    traj_ensembles = TrajectoryEnsemble(ensemble_name='ensemble',
                                       topology_list=ensemble_top,
                                       trajectory_list=ensemble_traj)
 

@@ -1,0 +1,2 @@
+.. automodule:: ENPMDA.ENPMDA
+    :noindex:

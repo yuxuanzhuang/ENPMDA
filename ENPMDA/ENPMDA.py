@@ -1,15 +1,16 @@
 """\
-=========================================================
-MDDataFrame --- :mod:`ENPMDA.MDDataFrame`
-=========================================================
+===========
+MDDataFrame
+===========
 The :class:`~ENPMDA.MDDataFrame` class both store
 the metadata of simulations in the ensemble and functions as
 a dask dataframe to add, compute, and store analysis.
 
 A ``MDDataFrame`` is created from files::
-  from ENPMDA import MDDataFrame
-  md_dataframe = MDDataFrame()
-  md_dataframe.add_traj_ensemble(traj_ensemble, npartitions=16)
+
+    from ENPMDA import MDDataFrame
+    md_dataframe = MDDataFrame()
+    md_dataframe.add_traj_ensemble(traj_ensemble, npartitions=16)
 
 
 Classes
