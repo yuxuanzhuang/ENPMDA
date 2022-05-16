@@ -33,7 +33,7 @@ import MDAnalysis as mda
 import MDAnalysis.transformations as trans
 import dask
 
-from ENPMDA.utils.grouphug import GroupHug
+from ENPMDA.utils import GroupHug
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 

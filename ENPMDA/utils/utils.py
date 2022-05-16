@@ -1,10 +1,8 @@
 import re
-import itertools
 
 
 def atoi(text):
     return int(text) if text.isdigit() else text
-
 
 def natural_keys(text):
     '''
