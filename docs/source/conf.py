@@ -20,9 +20,8 @@
 import os
 import sys
 import ENPMDA
-# sys.path.insert(0, os.path.abspath('../..'))
+sys.path.insert(0, os.path.abspath('../..'))
 # sys.path.insert(0, os.path.abspath('../../ENPMDA'))
-import sphinx_rtd_theme
 
 
 
