@@ -40,7 +40,7 @@ Features
 
 Workflow Illustration
 ---------------------
-.. image:: example.png
+.. image:: _static/example.png
   :width: 700
   :alt: Illustration of the ensemble analysis workflow.
 
@@ -54,8 +54,8 @@ TODO
 * option to retrieve numerical results 
 * switch between save to file and return values
 * documentation
-* add mechanims to cancel running tasks
-* add mechanims to test and report errors when adding features
+* add functions to cancel running tasks
+* add functions to test and report errors when adding features
 * ...
 
 
