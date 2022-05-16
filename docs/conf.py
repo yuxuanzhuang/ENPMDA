@@ -19,8 +19,9 @@
 #
 import os
 import sys
+sys.path.insert(0, os.path.abspath('..'))
+
 import ENPMDA
-sys.path.insert(0, os.path.abspath('../..'))
 # sys.path.insert(0, os.path.abspath('../../ENPMDA'))
 
 
@@ -33,7 +34,9 @@ sys.path.insert(0, os.path.abspath('../..'))
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc',
+extensions = [
+              'sphinx.ext.autosummary',
+              'sphinx.ext.autodoc',
               'sphinx.ext.viewcode',
               'myst_parser',
               'nbsphinx',
@@ -43,6 +46,11 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.todo',
               'sphinx_sitemap',
               'sphinx_rtd_theme']
+
+autosummary_generate = True
+napoleon_google_docstring = False
+napoleon_use_param = False
+napoleon_use_ivar = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -83,7 +91,7 @@ language = None
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'sphinx'
+pygments_style = 'default'
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
