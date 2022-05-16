@@ -37,9 +37,13 @@ Features
 * Expandable analysis library powered by MDAnalysis.
 * ...
 
+
+Workflow Illustration
+---------------------
 .. image:: ./example.png
-  :width: 400
+  :width: 700
   :alt: Illustration of the ensemble analysis workflow.
+
 
 TODO
 ----
@@ -53,8 +57,6 @@ TODO
 * add mechanims to cancel running tasks
 * add mechanims to test and report errors when adding features
 * ...
-
-
 
 
 Credits
