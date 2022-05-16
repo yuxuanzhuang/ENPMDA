@@ -30,8 +30,8 @@ import os
 import pickle
 import shutil
 
-from .analysis.base import AnalysisResult
-from .preprocessing import TrajectoryEnsemble
+from ENPMDA.analysis.base import AnalysisResult
+from ENPMDA.preprocessing import TrajectoryEnsemble
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 meta_data_list = ["universe",
