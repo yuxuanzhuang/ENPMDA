@@ -67,12 +67,13 @@ class TrajectoryEnsemble(object):
             even if the trajectory was processed before.
         only_raw: bool, optional
             If True, only the raw trajectory will be returned.
-            Otherwise, both processed trajectories for protein and 
+            Otherwise, both processed trajectories for protein and
             system will be returned.
         """
 
         if len(topology_list) != len(trajectory_list):
-            raise ValueError('topology_list and trajectory_list must have the same length.')
+            raise ValueError(
+                'topology_list and trajectory_list must have the same length.')
         self.ensemble_name = ensemble_name
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
@@ -92,35 +93,50 @@ class TrajectoryEnsemble(object):
 
         os.makedirs(self.filename, exist_ok=True)
 
-
-        if self.updating or not os.path.isfile(self.filename + "raw_traj.pickle"):
+        if self.updating or not os.path.isfile(
+                self.filename + "raw_traj.pickle"):
             self.processing_ensemble()
         else:
-            self.trajectory_files = pickle.load(open(self.filename + "raw_traj.pickle", "rb"))
+            self.trajectory_files = pickle.load(
+                open(self.filename + "raw_traj.pickle", "rb"))
         if not self.only_raw:
-            if self.updating or not os.path.isfile(self.filename + "protein.pickle"):
+            if self.updating or not os.path.isfile(
+                    self.filename + "protein.pickle"):
                 self.processing_protein()
             else:
-                self.protein_trajectory_files = pickle.load(open(self.filename + "protein.pickle", "rb"))
+                self.protein_trajectory_files = pickle.load(
+                    open(self.filename + "protein.pickle", "rb"))
 
             if updating or not os.path.isfile(self.filename + "system.pickle"):
                 self.processing_system()
             else:
-                self.system_trajectory_files = pickle.load(open(self.filename + "system.pickle", "rb"))
+                self.system_trajectory_files = pickle.load(
+                    open(self.filename + "system.pickle", "rb"))
 
     def processing_ensemble(self):
         load_job_list = []
         if not os.path.isfile(self.filename + "raw_traj.pickle"):
-            for ind, (topology, trajectory) in enumerate(zip(self.topology_list, self.trajectory_list)):
-                load_job_list.append(dask.delayed(self.preprocessing_raw_trajectory)(topology, trajectory, ind))
+            for ind, (topology, trajectory) in enumerate(
+                    zip(self.topology_list, self.trajectory_list)):
+                load_job_list.append(
+                    dask.delayed(
+                        self.preprocessing_raw_trajectory)(
+                        topology, trajectory, ind))
         else:
-            for ind, (topology, trajectory) in enumerate(zip(self.topology_list, self.trajectory_list)):
-                if os.path.getmtime(trajectory) > os.path.getmtime(self.filename + "raw_traj.pickle"):
+            for ind, (topology, trajectory) in enumerate(
+                    zip(self.topology_list, self.trajectory_list)):
+                if os.path.getmtime(trajectory) > os.path.getmtime(
+                        self.filename + "raw_traj.pickle"):
                     print(trajectory + ' modified.')
-                    load_job_list.append(dask.delayed(self.preprocessing_raw_trajectory)(topology, trajectory, ind))
+                    load_job_list.append(
+                        dask.delayed(
+                            self.preprocessing_raw_trajectory)(
+                            topology, trajectory, ind))
                 else:
                     print(trajectory + ' on hold.')
-                    load_job_list.append(dask.delayed(self.load_preprocessing_trajectory)(trajectory))
+                    load_job_list.append(
+                        dask.delayed(
+                            self.load_preprocessing_trajectory)(trajectory))
 
         self.trajectory_files = dask.compute(load_job_list)[0]
         print('dask finished')
@@ -134,7 +150,9 @@ class TrajectoryEnsemble(object):
             traj_path = os.path.dirname(trajectory)
 
             if os.path.isfile(traj_path + "/protein.xtc"):
-                load_job_list.append(dask.delayed(self.load_protein)(trajectory))
+                load_job_list.append(
+                    dask.delayed(
+                        self.load_protein)(trajectory))
         self.protein_trajectory_files = dask.compute(load_job_list)[0]
         print('dask finished')
         with open(self.filename + "protein.pickle", "wb") as f:
@@ -146,12 +164,13 @@ class TrajectoryEnsemble(object):
         for trajectory in self.trajectory_list:
             traj_path = os.path.dirname(trajectory)
             if os.path.isfile(traj_path + "/system.xtc"):
-                load_job_list.append(dask.delayed(self.load_system)(trajectory))
+                load_job_list.append(dask.delayed(
+                    self.load_system)(trajectory))
         self.system_trajectory_files = dask.compute(load_job_list)[0]
         print('dask finished')
         with open(self.filename + "system.pickle", "wb") as f:
             pickle.dump(self.system_trajectory_files, f)
-            print('pickle traj system universe done')       
+            print('pickle traj system universe done')
 
     def preprocessing_raw_trajectory(self, topology, trajectory, ind):
         #    print(trajectory)
@@ -161,8 +180,6 @@ class TrajectoryEnsemble(object):
             warnings.simplefilter("ignore")
             u = mda.Universe(topology,
                              trajectory)
-  
-
 
             u_prot = u.select_atoms('protein')
             if self.fix_chain:
@@ -178,9 +195,11 @@ class TrajectoryEnsemble(object):
                 unwrap = trans.unwrap(u.atoms)
                 center_in_box = trans.center_in_box(u_prot)
 
-            rot_fit_trans = trans.fit_rot_trans(u.select_atoms('name CA'), u.select_atoms('name CA'))
+            rot_fit_trans = trans.fit_rot_trans(
+                u.select_atoms('name CA'), u.select_atoms('name CA'))
             if self.fix_chain:
-                u.trajectory.add_transformations(*[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
+                u.trajectory.add_transformations(
+                    *[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
             else:
                 u.trajectory.add_transformations(*[rot_fit_trans])
 
@@ -188,16 +207,14 @@ class TrajectoryEnsemble(object):
                 with mda.Writer(traj_path + '/protein.xtc',
                                 u.select_atoms('protein').n_atoms) as W_prot, \
                     mda.Writer(traj_path + '/system.xtc',
-                                u.atoms.n_atoms) as W_sys:
+                               u.atoms.n_atoms) as W_sys:
                     for time, ts in enumerate(u.trajectory):
                         W_prot.write(u.select_atoms('protein'))
                         W_sys.write(u.atoms)
 
-                
                 u.select_atoms('protein').write(traj_path + '/protein.pdb')
                 u.atoms.write(traj_path + '/system.pdb')
-                    
-                
+
         # return u
         with open(self.filename + '_'.join(trajectory.split('/')) + '.pickle', 'wb') as f:
             pickle.dump(u, f)
@@ -214,7 +231,7 @@ class TrajectoryEnsemble(object):
     def load_protein(self, trajectory):
         traj_path = os.path.dirname(trajectory)
         u = mda.Universe(traj_path + '/protein.pdb',
-                        traj_path + '/protein.xtc')
+                         traj_path + '/protein.xtc')
 
         with open(self.filename + '_'.join(trajectory.split('/')) + '_prot.pickle', 'wb') as f:
             pickle.dump(u, f)
@@ -223,7 +240,7 @@ class TrajectoryEnsemble(object):
     def load_system(self, trajectory):
         traj_path = os.path.dirname(trajectory)
         u = mda.Universe(traj_path + '/system.pdb',
-                        traj_path + '/system.xtc')
+                         traj_path + '/system.xtc')
 
         with open(self.filename + '_'.join(trajectory.split('/')) + '_sys.pickle', 'wb') as f:
             pickle.dump(u, f)

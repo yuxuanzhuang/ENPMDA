@@ -33,9 +33,9 @@ setup(
     packages=find_packages(),
     package_dir={'ENPMDATests': 'ENPMDATests'},
     install_requires=[
-              'pytest>=3.3.0',
-              'hypothesis',
-          ],
+        'pytest>=3.3.0',
+        'hypothesis',
+    ],
     url='https://github.com/yuxuanzhuang/ENPMDA',
     version='0.1.0',
     zip_safe=False,

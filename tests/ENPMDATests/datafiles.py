@@ -6,8 +6,8 @@ ensemble_ala_top = []
 
 for rep in range(1, 9):
     ensemble_ala_tpr.append(resource_filename(__name__,
-    f'datafile/ensemble_AlaDipeptide/rep{rep}/md.tpr'))
+                                              f'datafile/ensemble_AlaDipeptide/rep{rep}/md.tpr'))
     ensemble_ala_traj.append(resource_filename(__name__,
-    f'datafile/ensemble_AlaDipeptide/rep{rep}/md.xtc'))
+                                               f'datafile/ensemble_AlaDipeptide/rep{rep}/md.xtc'))
     ensemble_ala_top.append(resource_filename(__name__,
-    f'datafile/ensemble_AlaDipeptide/rep{rep}/start.pdb'))
+                                              f'datafile/ensemble_AlaDipeptide/rep{rep}/start.pdb'))

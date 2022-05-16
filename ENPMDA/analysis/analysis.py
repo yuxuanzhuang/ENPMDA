@@ -46,6 +46,7 @@ class get_backbonetorsion(DaskChunkMdanalysis):
 
         return torsion_angle
 
+
 class get_atomic_position(DaskChunkMdanalysis):
     name = 'at_position'
 
