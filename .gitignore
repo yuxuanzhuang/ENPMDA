@@ -113,3 +113,4 @@ protein.xtc
 *.pickle
 dask-worker-space
 test_md_dataframe
+tmp

@@ -1,3 +1,28 @@
+"""\
+=========================================================
+TrajectoryEnsemble --- :mod:`ENPMDA.preprocessing.TrajectoryEnsemble`
+=========================================================
+The :class:`~ENPMDA.preprocessing.TrajectoryEnsemble` class both store
+the information of simulations in the ensemble and preload it by serialization.
+It can also apply on-the-fly transformations to the trajectories and extract
+selected components (e.g. only protein) to seperated files.
+
+A ``TrajectoryEnsemble`` is created from files::
+  from ENPMDA.preprocessing import TrajectoryEnsemble
+  traj_ensembles = TrajectoryEnsemble(ensemble_name='ensemble',
+                                      topology_list=ensemble_top,
+                                      trajectory_list=ensemble_traj)
+
+In order to add transformations e.g. wrap/unwrap, extra ``tpr_list``
+is required as input to provide bonded information.
+
+
+Classes
+=======
+.. autoclass:: TrajectoryEnsemble
+   :members:
+"""
+
 import os.path
 import warnings
 from datetime import datetime
@@ -18,51 +43,81 @@ class TrajectoryEnsemble(object):
                  ensemble_name,
                  topology_list,
                  trajectory_list,
+                 tpr_list=None,
                  timestamp=timestamp,
-                 fix_chain=True,
-                 updating=True):
+                 updating=True,
+                 only_raw=False):
+        """
+        Parameters
+        ----------
+        ensemble_name: str
+            The name of the ensemble. It will be used as the location folder
+            to save the pickled Universes.
+        topology_list: list
+            List of topology files, e.g. gro, pdb, etc.
+        trajectory_list: list
+            List of trajectory files, e.g. xtc, trr, etc.
+        tpr_list: list, optional
+            List of tpr files. For providing extra bonded information.
+        timestamp: str, optional
+            The timestamp of creating the ensemble
+            It will be set to the current time if not provided.
+        updating: bool, optional
+            If True, the trajectory will be updated
+            even if the trajectory was processed before.
+        only_raw: bool, optional
+            If True, only the raw trajectory will be returned.
+            Otherwise, both processed trajectories for protein and 
+            system will be returned.
+        """
 
         if len(topology_list) != len(trajectory_list):
             raise ValueError('topology_list and trajectory_list must have the same length.')
         self.ensemble_name = ensemble_name
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
+        self.tpr_list = tpr_list
         self.timestamp = timestamp
-        self.fix_chain = fix_chain
-        if os.path.splitext(self.topology_list[0])[1] != '.tpr':
+        self.updating = updating
+        self.only_raw = only_raw
+
+        if self.tpr_list is None:
             self.fix_chain = False
-            print('Provided topology file is not a .tpr file. \n',
+            print('No tpr_list provided. \n',
                   'PBC and chain cannot be fixed.')
+        else:
+            self.fix_chain = True
 
         self.working_dir = os.getcwd() + '/'
 
         os.makedirs(self.filename, exist_ok=True)
 
-        if updating or not os.path.isfile(self.filename + "raw_traj.pickle"):
+
+        if self.updating or not os.path.isfile(self.filename + "raw_traj.pickle"):
             self.processing_ensemble()
         else:
             self.trajectory_files = pickle.load(open(self.filename + "raw_traj.pickle", "rb"))
+        if not self.only_raw:
+            if self.updating or not os.path.isfile(self.filename + "protein.pickle"):
+                self.processing_protein()
+            else:
+                self.protein_trajectory_files = pickle.load(open(self.filename + "protein.pickle", "rb"))
 
-        if updating or not os.path.isfile(self.filename + "protein.pickle"):
-            self.processing_protein()
-        else:
-            self.protein_trajectory_files = pickle.load(open(self.filename + "protein.pickle", "rb"))
-
-        if updating or not os.path.isfile(self.filename + "system.pickle"):
-            self.processing_system()
-        else:
-            self.system_trajectory_files = pickle.load(open(self.filename + "system.pickle", "rb"))
+            if updating or not os.path.isfile(self.filename + "system.pickle"):
+                self.processing_system()
+            else:
+                self.system_trajectory_files = pickle.load(open(self.filename + "system.pickle", "rb"))
 
     def processing_ensemble(self):
         load_job_list = []
         if not os.path.isfile(self.filename + "raw_traj.pickle"):
-            for topology, trajectory in zip(self.topology_list, self.trajectory_list):
-                load_job_list.append(dask.delayed(self.preprocessing_raw_trajectory)(topology, trajectory))
+            for ind, (topology, trajectory) in enumerate(zip(self.topology_list, self.trajectory_list)):
+                load_job_list.append(dask.delayed(self.preprocessing_raw_trajectory)(topology, trajectory, ind))
         else:
-            for topology, trajectory in zip(self.topology_list, self.trajectory_list):
+            for ind, (topology, trajectory) in enumerate(zip(self.topology_list, self.trajectory_list)):
                 if os.path.getmtime(trajectory) > os.path.getmtime(self.filename + "raw_traj.pickle"):
                     print(trajectory + ' modified.')
-                    load_job_list.append(dask.delayed(self.preprocessing_raw_trajectory)(topology, trajectory))
+                    load_job_list.append(dask.delayed(self.preprocessing_raw_trajectory)(topology, trajectory, ind))
                 else:
                     print(trajectory + ' on hold.')
                     load_job_list.append(dask.delayed(self.load_preprocessing_trajectory)(trajectory))
@@ -98,7 +153,7 @@ class TrajectoryEnsemble(object):
             pickle.dump(self.system_trajectory_files, f)
             print('pickle traj system universe done')       
 
-    def preprocessing_raw_trajectory(self, topology, trajectory):
+    def preprocessing_raw_trajectory(self, topology, trajectory, ind):
         #    print(trajectory)
         traj_path = os.path.dirname(trajectory)
         # to ignore most unnecessary warnings
@@ -107,11 +162,13 @@ class TrajectoryEnsemble(object):
             u = mda.Universe(topology,
                              trajectory)
   
-            # u_bond = mda.Universe(trajectory + '/md.tpr')
-            # u.add_bonds(u_bond.bonds.to_indices())
+
 
             u_prot = u.select_atoms('protein')
             if self.fix_chain:
+                u_bond = mda.Universe(self.tpr_list[ind])
+                u.add_bonds(u_bond.bonds.to_indices())
+
                 prot_chain_list = []
                 for chain in u_prot.segments:
                     prot_chain_list.append(chain.atoms)
@@ -127,17 +184,18 @@ class TrajectoryEnsemble(object):
             else:
                 u.trajectory.add_transformations(*[rot_fit_trans])
 
-            with mda.Writer(traj_path + '/protein.xtc',
-                            u.select_atoms('protein').n_atoms) as W_prot, \
-                mda.Writer(traj_path + '/system.xtc',
-                            u.atoms.n_atoms) as W_sys:
-                for time, ts in enumerate(u.trajectory):
-                    W_prot.write(u.select_atoms('protein'))
-                    W_sys.write(u.atoms)
+            if not self.only_raw:
+                with mda.Writer(traj_path + '/protein.xtc',
+                                u.select_atoms('protein').n_atoms) as W_prot, \
+                    mda.Writer(traj_path + '/system.xtc',
+                                u.atoms.n_atoms) as W_sys:
+                    for time, ts in enumerate(u.trajectory):
+                        W_prot.write(u.select_atoms('protein'))
+                        W_sys.write(u.atoms)
 
                 
-            u.select_atoms('protein').write(traj_path + '/protein.pdb')
-            u.atoms.write(traj_path + '/system.pdb')
+                u.select_atoms('protein').write(traj_path + '/protein.pdb')
+                u.atoms.write(traj_path + '/system.pdb')
                     
                 
         # return u
