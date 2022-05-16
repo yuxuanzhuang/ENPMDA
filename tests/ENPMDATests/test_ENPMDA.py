@@ -2,7 +2,7 @@
 
 """Tests for `ENPMDA` package."""
 import os
-from pathlib.Path import tmp_path
+import tempfile
 import pytest
 import numpy as np
 from numpy.testing import (
@@ -14,60 +14,66 @@ from numpy.testing import (
 
 from ENPMDA import MDDataFrame
 from ENPMDA.preprocessing import TrajectoryEnsemble
-from ENPMDATests.datafiles import *
+from ENPMDATests.datafiles import (
+    ensemble_ala_tpr,
+    ensemble_ala_traj,
+    ensemble_ala_top
+)
 
-topology_list = [CLIMBER_BGT_EPJ, CLIMBER_BGT_EPJPNU,
-                 CLIMBER_EPJPNU_BGT, CLIMBER_EPJPNU_EPJ,
-                 CLIMBER_EPJ_BGT, CLIMBER_EPJ_EPJPNU]
-
-trajectory_list = [CLIMBER_BGT_EPJ_TRANSITION, CLIMBER_BGT_EPJPNU_TRANSITION,
-                 CLIMBER_EPJPNU_BGT_TRANSITION, CLIMBER_EPJPNU_EPJ_TRANSITION,
-                 CLIMBER_EPJ_BGT_TRANSITION, CLIMBER_EPJ_EPJPNU_TRANSITION]
 
 class TestDDataFrameCreation(object):
-
     @pytest.fixture
-    def my_filepath(self, tmpdir):
-        return tmpdir.mkdir("sub").join("testCurrentTicketCount.txt")
+    def tempdir(self):
+        tempdir = tempfile.mkdtemp()
+        return tempdir
+
+    def test_inititialize_trajectoryensemble(self, tempdir):
+        traj_ensembles = TrajectoryEnsemble(ensemble_name=tempdir + '/test_traj_ensemble',
+                                                topology_list=ensemble_ala_top,
+                                                trajectory_list=ensemble_ala_traj,
+                                                tpr_list=ensemble_ala_tpr,
+                                                updating=True,
+                                                only_raw=False)
+        assert_equal(traj_ensembles.filename,
+        os.getcwd() + '/' + tempdir + '/' + 'test_traj_ensemble' + '/',
+        "ensemble name is not set correctly")
 
 
-    def test_inititialize_trajectoryensemble(self):
-        traj_ensembles =  TrajectoryEnsemble(ensemble_name='test_traj_ensemble',
-                                    topology_list=topology_list,
-                                    trajectory_list=trajectory_list,
-                                    updating=True)
+    def test_initialize_mddataframe(self, tempdir):
+        md_dataframe = MDDataFrame(tempdir + '/test_init_dataframe')
 
-        assert_equal(traj_ensembles.ensemble_name, 'test_traj_ensemble', "ensemble name is not set correctly")
-
-
-    def test_initialize_mddataframe(self):
-        # Universe(top, trj)
-        tmp_dir = tmp_path
-        tmp_dir.mkdir()
-        md_dataframe = MDDataFrame(tmp_path'test_init_dataframe')
-
-        assert_equal(md_dataframe.working_dir, os.getcwd() + '/' + 'test_init_dataframe' + '/', "working dir is not set correctly")
+        assert_equal(md_dataframe.working_dir,
+        os.getcwd() + '/' + tempdir + '/' + 'test_init_dataframe' + '/',
+        "working dir is not set correctly")
 
 
 class TestAddTrajEnsemble(object):
-    @staticmethod
-    @pytest.fixture()
-    def md_dataframe():
-        return MDDataFrame('test_init_dataframe')
 
-    @staticmethod
+    @pytest.fixture
+    def tempdir(self):
+        tempdir = tempfile.mkdtemp()
+        return tempdir
+
     @pytest.fixture()
-    def traj_ensemble():
-        return TrajectoryEnsemble(ensemble_name='test_traj_ensemble',
-                                    topology_list=topology_list,
-                                    trajectory_list=trajectory_list,
-                                    updating=False)
+    def md_dataframe(self, tempdir):
+        return MDDataFrame(tempdir + '/test_init_dataframe')
+
+    @pytest.fixture()
+    def traj_ensemble(self, tempdir):
+        return TrajectoryEnsemble(ensemble_name=tempdir + '/test_ensemble',
+                                    topology_list=ensemble_ala_top,
+                                    trajectory_list=ensemble_ala_traj,
+                                    tpr_list=ensemble_ala_tpr,
+                                    updating=True,
+                                    only_raw=False)
 
     def test_add_trajectory_ensemble(self, md_dataframe, traj_ensemble):
         md_dataframe.add_traj_ensemble(traj_ensemble, npartitions=10)
 
         assert md_dataframe.dd_dataframe is not None
-        assert_array_equal(md_dataframe.dataframe.shape, (1806,7), "Dataframe shape is not correct")
+        assert_array_equal(md_dataframe.dataframe.shape,
+        (168,7),
+        "Dataframe shape is not correct")
         assert_equal(md_dataframe.dataframe.columns.tolist(),
         ['universe', 'universe_system', 'system', 'md_name', 'frame', 'traj_time', 'stride'],
         "Dataframe columns are not correct")
