@@ -4,6 +4,7 @@
 
 from setuptools import setup, find_packages
 
+RELEASE='0.2.0'
 
 setup(
     author="Yuxuan Zhuang",
@@ -30,6 +31,6 @@ setup(
         'hypothesis',
     ],
     url='https://github.com/yuxuanzhuang/ENPMDA',
-    version='0.2.0',
+    version=RELEASE,
     zip_safe=False,
 )
