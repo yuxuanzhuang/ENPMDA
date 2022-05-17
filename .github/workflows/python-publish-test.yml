@@ -23,17 +23,18 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python
+    
       uses: actions/setup-python@v3
       with:
         python-version: '3.x'
     - name: Install dependencies
+      working-directory: ./tests
       run: |
         python -m pip install --upgrade pip
-        cd tests
         pip install build
     - name: Build package
+      working-directory: ./tests
       run: |
-        cd tests
         python -m build
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
