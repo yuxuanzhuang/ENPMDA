@@ -2,7 +2,7 @@
 ========
 Analysis
 ========
-The :class:`~ENPMDA.analysis.DaskChunkMdanalysis` class is
+The :class:`~ENPMDA.analysis.base.DaskChunkMdanalysis` class is
 the base class to define multi-frame parallel analysis for
 the MD trajectories. It functions as a wrapper of the
 MDAnalysis analysis functions to map the analysis to the Dask dataframe.
@@ -10,7 +10,9 @@ This class takes care of loading the right universe and dumping the
 results as a `npy` file to avoid huge memory footprint
 and dask scheduler clogging. 
 
-To define a new analysis, ``DaskChunkMdanalysis`` needs to be subclassed.
+To define a new analysis,
+:class:`~ENPMDA.analysis.base.DaskChunkMdanalysis`
+needs to be subclassed.
 `run_analysis` need to be defined. ``name`` will be the feature name
 appending to the dataframe. In default, only protein universe file
 will be used to run analysis. It can be overridden by defining
@@ -19,11 +21,13 @@ provided and stored in ``_feature_info``::
 
     from ENPMDA.analysis import DaskChunkMdanalysis
     class NewAnalysis(DaskChunkMdanalysis):
-        name = 'newanalysis'
-        universe_file = 'system'
+        name = 'new_analysis'
+        universe_file = 'protein'
+
+        def get_feature_info(self):
+            return ['some_info']
 
         def run_analysis(self, universe, start, stop, step):
-            self._feature_info = ['new_analysis']
             result = []
             for ts in universe.trajectory[start:stop:step]:
                 result.append(some_analysis(universe.atoms))
