@@ -180,6 +180,7 @@ class MDDataFrame(object):
                                            npartitions=npartitions)
         print('Dask dataframe generated with {} partitions'.format(npartitions))
         self.analysis_results = AnalysisResult(self.dd_dataframe,
+                                               self.dataframe,
                                                working_dir=self.filename,
                                                timestamp=self.timestamp)
 
@@ -201,6 +202,8 @@ class MDDataFrame(object):
         elif analysis.name in self.analysis_list and overwrite:
             warnings.warn(f'Analysis {analysis.name} already added, overwriting!',
                           stacklevel=2)
+            self.analysis_list.remove(analysis.name)
+            self.analysis_list.append(analysis.name)
             self.analysis_results.add_column_to_results(analysis)
         else:
             self.analysis_list.append(analysis.name)
@@ -216,6 +219,23 @@ class MDDataFrame(object):
             self.analysis_results.compute()
         self.analysis_results.append_to_dataframe(self.dataframe)
         self.computed = True
+
+
+    def get_feature(self, feature_list):
+        """
+        Get the features from the dataframe.
+
+        Parameters
+        ----------
+        feature_list: list of str
+            The list of features to be extracted.
+        """
+        if not self.computed:
+            self.compute()
+
+        return self.analysis_results.get_feature(feature_list)
+
+    
 
     def save(self, filename='dataframe'):
         """

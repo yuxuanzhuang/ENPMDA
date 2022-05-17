@@ -36,7 +36,6 @@ import MDAnalysis.transformations as trans
 import dask
 
 from ENPMDA.utils import GroupHug
-from pydantic import NoneStrBytes
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 

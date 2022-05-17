@@ -13,7 +13,7 @@ from .base import DaskChunkMdanalysis
 class get_backbonetorsion(DaskChunkMdanalysis):
     name = 'torsion'
 
-    def run_analysis(self, universe, start, stop, step):
+    def set_feature_info(self, universe):
         res_phi_list = [x.resindices[0]
                         for x in universe.atoms.residues.phi_selections() if x is not None]
 
@@ -26,6 +26,8 @@ class get_backbonetorsion(DaskChunkMdanalysis):
         self._feature_info.extend(['_'.join([str(residex), ang]) for residex, ang in
                                    itertools.product(res_psi_list,
                                                      ['psi_cos', 'psi_sin'])])
+
+    def run_analysis(self, universe, start, stop, step):
         phi_ag = [x for x in universe.atoms.residues.phi_selections()
                   if x is not None]
         phi_angle_ana = mda_dihedral(phi_ag).run(start, stop, step)
@@ -50,12 +52,13 @@ class get_backbonetorsion(DaskChunkMdanalysis):
 class get_atomic_position(DaskChunkMdanalysis):
     name = 'at_position'
 
-    def run_analysis(self, universe, start, stop, step):
+    def set_feature_info(self, universe):
         backbone_atoms = universe.select_atoms('backbone')
-
-        self._feature_info = ['_'.join([str(residex), feat]) for residex, feat in itertools.product(
+        return ['_'.join([str(residex), feat]) for residex, feat in itertools.product(
             backbone_atoms.residues.resindices, ['_bb_pos_x', '_bb_pos_y', '_bb_pos_z'])]
 
+    def run_analysis(self, universe, start, stop, step):
+        backbone_atoms = universe.select_atoms('backbone')
         result = []
         for ts in universe.trajectory[start:stop:step]:
             result.append(
@@ -68,8 +71,10 @@ class get_atomic_position(DaskChunkMdanalysis):
 class get_rmsd_init(DaskChunkMdanalysis):
     name = 'rmsd_to_init'
 
+    def set_feature_info(self, universe):
+        return ['rmsd_to_init']
+
     def run_analysis(self, universe, start, stop, step):
-        self._feature_info = ['rmsd_to_init']
 
         name_backbone = universe.select_atoms('backbone')
         rmsd = RMSD(name_backbone, name_backbone).run(start, stop, step)
@@ -80,8 +85,10 @@ class get_protein_hydration(DaskChunkMdanalysis):
     name = 'protein_hydration'
     universe_file = 'system'
 
-    def run_analysis(self, universe, start, stop, step):
+    def set_feature_info(self, universe):
         self._feature_info = ['protein_hydration']
+
+    def run_analysis(self, universe, start, stop, step):
 
         prot_hydration = universe.select_atoms(
             "around 5 backbone", updating=True)

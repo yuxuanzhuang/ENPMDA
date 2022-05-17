@@ -48,12 +48,14 @@ class AnalysisResult(dict):
     """
 
     def __init__(self,
-                 md_data,
+                 dd_dataframe,
+                 dataframe,
                  working_dir,
                  timestamp):
         super().__init__()
 
-        self.md_data = md_data
+        self.dd_dataframe = dd_dataframe
+        self.dataframe = dataframe
         self.working_dir = working_dir
 #        self.ref_info = {}
 #        self.u_ref = u_ref
@@ -75,12 +77,13 @@ class AnalysisResult(dict):
 
     def add_column_to_results(self, analysis_function, **kwargs):
         kwargs['filename'] = self.filename
-        item_name = analysis_function().name
-        meta = dict(self.md_data.dtypes)
+        kwargs['ref_df'] = self.dataframe.iloc[0]
+        item_name = analysis_function.name
+        meta = dict(self.dd_dataframe.dtypes)
         meta[item_name] = "f8"
 
         # add analysis to dataframe
-        self[item_name] = self.md_data.map_partitions(lambda df:
+        self[item_name] = self.dd_dataframe.map_partitions(lambda df:
                                                       df.assign(
                                                           **{item_name: analysis_function(**kwargs)(df)}),
                                                       meta=meta,
@@ -156,11 +159,30 @@ class DaskChunkMdanalysis(object):
         self._partition = uuid.uuid4().hex
         self._feature_info = []
 
+        # sanity check and get feature info
+        if self.universe_file == 'protein':
+            universe = pickle.load(open(self.ref_df.universe_protein, "rb"))
+        else:
+            universe = pickle.load(open(self.ref_df.universe_system, "rb"))
+        self.set_feature_info(universe)
+        check_result = np.asarray(self.run_analysis(universe, 0, 2, 1))
+        check_result = check_result.reshape(check_result.shape[0], -1)
+        if check_result.shape[1] != len(self._feature_info):
+            raise ValueError(f'The shape of feature info ({len(self._feature_info)}) '
+            f'does not match the shape of analysis {check_result.shape[1]}.')
+        if check_result.shape[0] != 2:
+            raise ValueError('The len of the result'
+            'does not match the number of the frame.'
+            'Hint: run_analysis should return a list'
+            'with the shape as the trajectory frames.')
+
     def __call__(self, df):
         return self.run_df(df)
 
     def run_df(self, df):
         result = []
+
+        # run analysis
         for system, df_sys in df.groupby(['system']):
             # if system information has to be used set `universe_file =
             # 'system'`
@@ -187,6 +209,13 @@ class DaskChunkMdanalysis(object):
         return n_result * [self.location]
 
 #        return list(itertools.chain.from_iterable(result))
+
+    def set_feature_info(self, universe):
+        """
+        This function is used to set the feature information
+        """
+        self._feature_info = []
+        raise NotImplementedError('Only for inheritance.')
 
     def run_analysis(self, universe, start, stop, step):
         """
