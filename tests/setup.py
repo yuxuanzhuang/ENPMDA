@@ -6,6 +6,12 @@ from setuptools import setup, find_packages
 
 RELEASE='0.4.0'
 
+with open('../README.rst') as readme_file:
+    readme = readme_file.read()
+
+with open('../HISTORY.rst') as history_file:
+    history = history_file.read()
+    
 setup(
     author="Yuxuan Zhuang",
     author_email='yuxuan.zhuang@dbb.su.se',
@@ -22,6 +28,7 @@ setup(
     ],
     description="test for parallel analysis for ensemble simulations",
     license="GNU General Public License v3",
+    long_description=readme + '\n\n' + history
     include_package_data=True,
     name='ENPMDATests',
     packages=find_packages(),
