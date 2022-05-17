@@ -234,7 +234,7 @@ class MDDataFrame(object):
         if not self.computed:
             self.compute()
 
-        feature_dataframe = self.dataframe[['system', 'traj_name', 'frame', 'traj_time']]
+        feature_dataframe = self.dataframe[['system', 'traj_name', 'frame', 'traj_time']].copy()
         for feature in feature_list:
             raw_data = np.concatenate([np.load(location,
                                         allow_pickle=True)
