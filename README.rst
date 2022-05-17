@@ -15,7 +15,7 @@ Ensemble Parallel MDAnalysis
         :target: https://travis-ci.com/yuxuanzhuang/ENPMDA
 
 .. image:: https://readthedocs.org/projects/ENPMDA/badge/?version=latest
-        :target: https://ENPMDA.readthedocs.io/en/latest/?version=latest
+        :target: https://ENPMDA.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
 .. image:: https://codecov.io/gh/yuxuanzhuang/ENPMDA/branch/main/graph/badge.svg
