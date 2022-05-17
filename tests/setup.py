@@ -4,7 +4,7 @@
 
 from setuptools import setup, find_packages
 
-RELEASE='0.2.0'
+RELEASE='0.3.0'
 
 setup(
     author="Yuxuan Zhuang",
