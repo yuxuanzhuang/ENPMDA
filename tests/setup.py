@@ -4,12 +4,6 @@
 
 from setuptools import setup, find_packages
 
-with open('README.rst') as readme_file:
-    readme = readme_file.read()
-
-with open('HISTORY.rst') as history_file:
-    history = history_file.read()
-
 
 setup(
     author="Yuxuan Zhuang",
@@ -27,7 +21,6 @@ setup(
     ],
     description="test for parallel analysis for ensemble simulations",
     license="GNU General Public License v3",
-    long_description=readme + '\n\n' + history,
     include_package_data=True,
     name='ENPMDATests',
     packages=find_packages(),
@@ -37,6 +30,6 @@ setup(
         'hypothesis',
     ],
     url='https://github.com/yuxuanzhuang/ENPMDA',
-    version='0.1.0',
+    version='0.2.0',
     zip_safe=False,
 )

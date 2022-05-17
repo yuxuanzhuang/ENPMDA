@@ -4,15 +4,27 @@
 
 from setuptools import setup, find_packages
 
+RELEASE='0.2.0'
+
 with open('README.rst') as readme_file:
     readme = readme_file.read()
 
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements = []
+requirements = [
+    'mdanalysis>=2.0.0',
+    'dask',
+    'distributed',
+    'numpy',
+    'pandas',
+]
 
-test_requirements = ['pytest>=3', ]
+test_requirements = [
+    'pytest>=3',
+    'numpy',
+    'ENPMDATests=={0!s}'.format(RELEASE),
+]
 
 setup(
     author="Yuxuan Zhuang",
@@ -39,6 +51,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/yuxuanzhuang/ENPMDA',
-    version='0.2.0',
+    version=RELEASE,
     zip_safe=False,
 )
