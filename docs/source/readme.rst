@@ -21,19 +21,29 @@ Ensemble Parallel MDAnalysis
 .. warning::
     This is still under constrution.
 
+ENPMDA
+------
+
 Parallel analysis for ensemble simulations
 powered by MDAnalysis.
-ENPMDA uses ``pandas.DataFrame`` to store metadata
-and ``dask.DataFrame``
-to distribute computation jobs so that the parallel
-analysis can be performed not only for one trajectory
+ENPMDA stores metadata in ``pandas.DataFrame``
+and distributes computation jobs in ``dask.DataFrame``
+so that the parallel analysis can be performed
+not only for one single trajectory
 but also across simulations and analyses.
 
-It can be both performed as an initial inspection of
-the raw trajectories as well as a framework to 
-extract features from the final production runs for further
-e.g. machine learning and markov state model building.
+It can be used as an initial inspection of
+the raw trajectories as well as a framework for 
+extracting features from final production simulations
+for further e.g. machine learning and markov
+state modeling. It automatically fixes the PBC issue and
+align and center the protein inside the simulation box.
+It also works for multimeric proteins!
 
-The framework is designed to be flexible by simply
-wrapping MDAnalysis analysis functions without worrying
-the parallel machinery behind.
+The framework is intended to be adaptable by being able to
+simply wrapping MDAnalysis analysis functions without worrying
+about the parallel machinery behind.
+
+
+* Free software: GNU General Public License v3
+* Documentation: https://ENPMDA.readthedocs.io.
