@@ -115,9 +115,17 @@ class MDDataFrame(object):
 
         self.trajectory_ensemble = trajectory_ensemble
 
-        self.trajectory_files = trajectory_ensemble.trajectory_files
-        self.protein_trajectory_files = trajectory_ensemble.protein_trajectory_files
-        self.system_trajectory_files = trajectory_ensemble.system_trajectory_files
+        if trajectory_ensemble.protein_trajectory_files is None:
+            warnings.warn('The provided trajectory ensemble'
+            'only contain raw trajectories'
+            'all analysis will be performed on the raw trajectories')
+            self.trajectory_files = trajectory_ensemble.trajectory_files
+            self.protein_trajectory_files = trajectory_ensemble.trajectory_files
+            self.system_trajectory_files = trajectory_ensemble.trajectory_files
+        else:
+            self.trajectory_files = trajectory_ensemble.trajectory_files
+            self.protein_trajectory_files = trajectory_ensemble.protein_trajectory_files
+            self.system_trajectory_files = trajectory_ensemble.system_trajectory_files
 
         self.npartitions = npartitions
         self.stride = stride

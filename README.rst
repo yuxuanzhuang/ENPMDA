@@ -1,6 +1,6 @@
-=================
-Ensemble Analysis
-=================
+============================
+Ensemble Parallel MDAnalysis
+============================
 
 |mdanalysis|
 
@@ -18,10 +18,30 @@ Ensemble Analysis
         :target: https://ENPMDA.readthedocs.io/en/latest/?version=latest
         :alt: Documentation Status
 
-.. warning::
-    This is still under constrution.
+Warning
+-------
 
-parallel analysis for ensemble simulations
+This is still under constrution.
+
+ENPMDA
+------
+
+Parallel analysis for ensemble simulations
+powered by MDAnalysis.
+`ENPMDA uses `pandas.DataFrame`` to store metadata
+and ``dask.DataFrame``
+to distribute computation jobs so that the parallel
+analysis can be performed not only for one trajectory
+but also across simulations and analyses.
+
+It can be both performed as an initial inspection of
+the raw trajectories as well as a framework to 
+extract features from the final production runs for further
+e.g. machine learning and markov state model building.
+
+The framework is designed to be flexible by simply
+wrapping MDAnalysis analysis functions without worrying
+the parallel machinery behind.
 
 
 * Free software: GNU General Public License v3
@@ -40,7 +60,7 @@ Features
 
 Workflow Illustration
 ---------------------
-.. image:: docs/source/_static/example.png
+.. image:: /docs/source/_static/example.png
   :width: 700
   :alt: Illustration of the ensemble analysis workflow.
 

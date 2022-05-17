@@ -36,6 +36,7 @@ import MDAnalysis.transformations as trans
 import dask
 
 from ENPMDA.utils import GroupHug
+from pydantic import NoneStrBytes
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -139,7 +140,9 @@ class TrajectoryEnsemble(object):
             else:
                 self.system_trajectory_files = pickle.load(
                     open(self.filename + "system.pickle", "rb"))
-
+        else:
+            self.system_trajectory_files = None
+            self.protein_trajectory_files = None
     def _processing_ensemble(self):
         load_job_list = []
         if not os.path.isfile(self.filename + "raw_traj.pickle"):
