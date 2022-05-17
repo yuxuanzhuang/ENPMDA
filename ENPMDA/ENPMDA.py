@@ -35,10 +35,10 @@ from ENPMDA.analysis.base import AnalysisResult
 from ENPMDA.preprocessing import TrajectoryEnsemble
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-meta_data_list = ["universe",
+meta_data_list = ["universe_protein",
                   "universe_system",
                   "system",
-                  "md_name",
+                  "traj_name",
                   "frame",
                   "traj_time",
                   "stride",
@@ -46,24 +46,48 @@ meta_data_list = ["universe",
 
 
 class MDDataFrame(object):
-    def __init__(self, location='.', meta_data_list=meta_data_list,
+    r"""
+    Class to store the metadata and analysis results
+    of the ensemble simulations.
+
+    It uses pandas.DataFrame to store metadata
+    and dask.DataFrame to distribute computation jobs
+    so that the parallel analysis can be performed not
+    only for one trajectory but also across simulations
+    and analyses.
+    """
+
+    def __init__(self,
+                 dataframe_name,
+                 meta_data_list=meta_data_list,
                  timestamp=timestamp):
         """
         Parameters
         ----------
-        lcation: str, optional
-            The location to store pickled analysis results.
+        dataframe_name: str
+            The name of the dataframe
+            It will be used as the folder to save
+            all the analysis results. 
+            It can also be the absolute path to the folder.
         meta_data_list: list, optional
             List of metadata in the dataframe.
+            In default, the locations of pickled universes
+            of protein and system, the system index, the
+            trajectory filename, the frame index, the
+            trajectory time, and the stride are stored.
         timestamp: str, optional
             The timestamp of creating the ensemble
             It will be set to the current time if not provided.
         """
+        self.dataframe_name = dataframe_name
         self.dataframe = pd.DataFrame(
             columns=meta_data_list
         )
         self.computed = False
-        self.working_dir = os.getcwd() + '/' + location + '/'
+        if not os.path.isabs(self.dataframe_name):
+            self.working_dir = os.getcwd() + '/'
+        else:
+            self.working_dir = ''
         self.timestamp = timestamp
         self.trajectory_ensemble = None
         self.analysis_list = []
@@ -74,6 +98,17 @@ class MDDataFrame(object):
                           stride=1
                           ):
         """
+        Parameters
+        ----------
+        trajectory_ensemble: ENPMDA.TrajectoryEnsemble
+            The trajectory ensemble to be added to the
+            dataframe.
+        npartitions: int
+            The number of partitions to be used in
+            the dask dataframe.
+        stride: int, optional
+            The stride to be used in the dask dataframe.
+            It is used to skip frames in the trajectory.
         """
         if self.trajectory_ensemble is not None:
             raise ValueError('Trajectory ensemble already added')
@@ -105,12 +140,7 @@ class MDDataFrame(object):
         self.dataframe.frame = self.dataframe.frame.apply(int)
         self.dataframe.traj_time = self.dataframe.traj_time.apply(float)
 
-#        for sys, df in self.dataframe.groupby(['system']):
-#            print(
-# f'{df.pathway.iloc[-1]} system {df.seed.iloc[-1]}:
-# {df.traj_time.iloc[-1] / 1000} ns')
-
-        self.init_analysis_results(npartitions=self.npartitions)
+        self._init_analysis_results(npartitions=self.npartitions)
 
     def _append_metadata(self, universe, system):
         universe_system = self.system_trajectory_files[system]
@@ -137,15 +167,26 @@ class MDDataFrame(object):
         del u
         return rep_data
 
-    def init_analysis_results(self, npartitions):
+    def _init_analysis_results(self, npartitions):
         self.dd_dataframe = dd.from_pandas(self.dataframe,
                                            npartitions=npartitions)
         print('Dask dataframe generated with {} partitions'.format(npartitions))
         self.analysis_results = AnalysisResult(self.dd_dataframe,
-                                               working_dir=self.working_dir,
+                                               working_dir=self.filename,
                                                timestamp=self.timestamp)
 
     def add_analysis(self, analysis, overwrite=False):
+        """
+        Add an analysis to the dataframe.
+
+        Parameters
+        ----------
+        analysis: ENPMDA.analysis.base.DaskChunkMdanalysis
+            The analysis to be added to the dataframe.
+        overwrite: bool, optional
+            Whether to overwrite the analysis if it is
+            already in the dataframe.
+        """
         if analysis.name in self.analysis_list and not overwrite:
             warnings.warn(f'Analysis {analysis.name} already added, add overwrite=True to overwrite',
                           stacklevel=2)
@@ -158,24 +199,41 @@ class MDDataFrame(object):
             self.analysis_results.add_column_to_results(analysis)
 
     def compute(self):
-        self.analysis_results.compute()
+        """
+        Compute the analysis results.
+        It will be append the analysis results to
+        the dataframe.
+        """
+        if not self.computed:
+            self.analysis_results.compute()
         self.analysis_results.append_to_dataframe(self.dataframe)
         self.computed = True
 
     def save(self, filename='dataframe'):
+        """
+        Compute the analysis results and
+        save the dataframe to a pickle file.
+        
+        Parameters
+        ----------
+        filename: str, optional
+            The name of the pickle file.
+            It will be saved in the working directory
+        """
+
         if not self.computed:
             self.compute()
 
-        if not os.path.exists(f'{self.working_dir}{filename}.pickle'):
-            with open(f'{self.working_dir}{filename}.pickle', 'wb') as f:
+        if not os.path.exists(f'{self.filename}{filename}.pickle'):
+            with open(f'{self.filename}{filename}.pickle', 'wb') as f:
                 pickle.dump(self.dataframe, f)
         else:
             md_data_old = pickle.load(
-                open(f'{self.working_dir}{filename}.pickle', 'rb'))
+                open(f'{self.filename}{filename}.pickle', 'rb'))
 
             if set(md_data_old.universe) != set(self.dataframe.universe):
                 print('New seeds added')
-                with open(f'{self.working_dir}{filename}.pickle', 'wb') as f:
+                with open(f'{self.filename}{filename}.pickle', 'wb') as f:
                     pickle.dump(self.dataframe, f)
             elif md_data_old.shape[0] != self.dataframe.shape[0]:
                 print('N.frame changed')
@@ -196,13 +254,20 @@ class MDDataFrame(object):
                     md_data_old[common_col] = self.md_data[common_col]
 
                 shutil.copyfile(
-                    f'{self.working_dir}{filename}.pickle',
-                    f'{self.working_dir}{filename}_{self.timestamp}.pickle')
-                md_data_old.to_pickle(f'{self.working_dir}{filename}.pickle')
+                    f'{self.filename}{filename}.pickle',
+                    f'{self.filename}{filename}_{self.timestamp}.pickle')
+                md_data_old.to_pickle(f'{self.filename}{filename}.pickle')
             else:
                 print('No changes')
-                with open(f'{self.working_dir}{filename}.pickle', 'wb') as f:
+                with open(f'{self.filename}{filename}.pickle', 'wb') as f:
                     pickle.dump(self.dataframe, f)
 
-        with open(f'{self.working_dir}{filename}_md_dataframe.pickle', 'wb') as f:
+        with open(f'{self.filename}{filename}_md_dataframe.pickle', 'wb') as f:
             pickle.dump(self, f)
+
+    @property
+    def filename(self):
+        """
+        The saving location of all the pickled files.
+        """
+        return self.working_dir + self.dataframe_name + '/'
