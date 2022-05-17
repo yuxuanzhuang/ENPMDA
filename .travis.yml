@@ -12,3 +12,5 @@ install:
   - python setup.py install && (cd tests/ && python setup.py install)
 script:
   - python -m pytest tests/ENPMDATests --disable-pytest-warnings --cov=ENPMDA -n 8 -rsx
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
