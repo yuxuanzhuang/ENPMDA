@@ -14,7 +14,7 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'mdanalysis>=2.0.0',
-    'dask',
+    'dask[complete]',
     'distributed',
     'numpy',
     'pandas',

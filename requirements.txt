@@ -1,5 +1,5 @@
 mdanalysis
-dask
+dask[complete]
 distributed
 tqdm
 numpy
