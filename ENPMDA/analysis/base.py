@@ -24,7 +24,7 @@ provided and stored in ``_feature_info``::
         name = 'new_analysis'
         universe_file = 'protein'
 
-        def get_feature_info(self):
+        def get_feature_info(self, universe):
             return ['some_info']
 
         def run_analysis(self, universe, start, stop, step):
