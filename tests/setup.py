@@ -28,7 +28,7 @@ setup(
     ],
     description="test for parallel analysis for ensemble simulations",
     license="GNU General Public License v3",
-    long_description=readme + '\n\n' + history
+    long_description=readme + '\n\n' + history,
     include_package_data=True,
     name='ENPMDATests',
     packages=find_packages(),
