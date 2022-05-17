@@ -57,8 +57,6 @@ class AnalysisResult(dict):
         self.dd_dataframe = dd_dataframe
         self.dataframe = dataframe
         self.working_dir = working_dir
-#        self.ref_info = {}
-#        self.u_ref = u_ref
 
         self.timestamp = timestamp
 
@@ -77,7 +75,27 @@ class AnalysisResult(dict):
 
     def add_column_to_results(self, analysis_function, **kwargs):
         kwargs['filename'] = self.filename
-        kwargs['ref_df'] = self.dataframe.iloc[0]
+
+        # sanity check and get feature info
+        check_analysis_function = analysis_function(**kwargs)
+        if check_analysis_function.universe_file == 'protein':
+            universe = pickle.load(open(self.dataframe.iloc[0].universe_protein, "rb"))
+        else:
+            universe = pickle.load(open(self.dataframe.iloc[0].universe_system, "rb"))
+        
+        feature_info = check_analysis_function.set_feature_info(universe)
+        check_result = np.asarray(check_analysis_function.run_analysis(universe, 0, 2, 1))
+        check_result = check_result.reshape(check_result.shape[0], -1)
+        if check_result.shape[1] != len(feature_info):
+            raise ValueError(f'The shape of feature info ({len(feature_info)}) '
+            f'does not match the shape of analysis ({check_result.shape[1]}).')
+        if check_result.shape[0] != 2:
+            raise ValueError('The len of the result'
+            'does not match the number of the frame.'
+            'Hint: run_analysis should return a list'
+            'with the shape as the trajectory frames.')
+        np.save(check_analysis_function.feature_info_loc, feature_info)
+
         item_name = analysis_function.name
         meta = dict(self.dd_dataframe.dtypes)
         meta[item_name] = "f8"
@@ -90,48 +108,6 @@ class AnalysisResult(dict):
                                                       token=item_name
                                                       ).persist()
 
-#        self.ref_info[item_name] = analysis_function(
-#            **kwargs).run_analysis(self.u_ref, 0, 3, 1)
-
-    def save_results(self):
-        for item, df in self.items():
-            if isinstance(df, dask.dataframe.core.DataFrame):
-                df.to_csv(
-                    self.working_dir +
-                    '/analysis_results/' +
-                    str(item) +
-                    '-*.csv')
-
-    def filter_result(self, column, filter_threshold):
-        """
-        filter results based on threshold
-        not used
-        """
-        filter_index = []
-        for datafile in set(self[column].iloc[:, 1]):
-            data = np.load(datafile, allow_pickle=True)
-            filter_index.extend(
-                np.where(
-                    np.any(
-                        data < filter_threshold,
-                        axis=0)))
-        filter_index = list(set(filter_index[0]))
-
-        for datafile in set(self[column].iloc[:, 1]):
-            data = np.load(datafile, allow_pickle=True)
-            np.save(datafile +
-                    '.filter_' +
-                    str(filter_threshold) +
-                    '.npy', data[:, filter_index])
-
-        self[column + '.filter_' +
-             str(filter_threshold)] = self[column].copy(deep=True)
-        self[column +
-             '.filter_' +
-             str(filter_threshold)].iloc[:, 1] = self[column].iloc[:, 1].apply(lambda x: x +
-                                                                               '.filter_' +
-                                                                               str(filter_threshold) +
-                                                                               '.npy')
 
     def append_to_dataframe(self, dataframe):
         for item in self.keys():
@@ -157,24 +133,7 @@ class DaskChunkMdanalysis(object):
 
         # get unique uuid for each partition
         self._partition = uuid.uuid4().hex
-        self._feature_info = []
-
-        # sanity check and get feature info
-        if self.universe_file == 'protein':
-            universe = pickle.load(open(self.ref_df.universe_protein, "rb"))
-        else:
-            universe = pickle.load(open(self.ref_df.universe_system, "rb"))
-        self.set_feature_info(universe)
-        check_result = np.asarray(self.run_analysis(universe, 0, 2, 1))
-        check_result = check_result.reshape(check_result.shape[0], -1)
-        if check_result.shape[1] != len(self._feature_info):
-            raise ValueError(f'The shape of feature info ({len(self._feature_info)}) '
-            f'does not match the shape of analysis {check_result.shape[1]}.')
-        if check_result.shape[0] != 2:
-            raise ValueError('The len of the result'
-            'does not match the number of the frame.'
-            'Hint: run_analysis should return a list'
-            'with the shape as the trajectory frames.')
+        self.feature_info = []
 
     def __call__(self, df):
         return self.run_df(df)
@@ -205,16 +164,15 @@ class DaskChunkMdanalysis(object):
         np.save(self.location, result_ordered)
         n_result = len(result_ordered)
         del result_ordered
-        np.save(self.feature_info_loc, self._feature_info)
         return n_result * [self.location]
 
 #        return list(itertools.chain.from_iterable(result))
 
     def set_feature_info(self, universe):
         """
-        This function is used to set the feature information
+        This function is used to set the feature information.
+        Shold return a list of features.
         """
-        self._feature_info = []
         raise NotImplementedError('Only for inheritance.')
 
     def run_analysis(self, universe, start, stop, step):
@@ -222,11 +180,6 @@ class DaskChunkMdanalysis(object):
         The function to be overwritten by the analysis class.
         """
         raise NotImplementedError('Only for inheritance.')
-
-    @property
-    def feature_info(self):
-        #  contain info of n features
-        return self._feature_info
 
     @property
     def name(self):

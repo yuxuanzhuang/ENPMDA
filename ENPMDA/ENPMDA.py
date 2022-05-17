@@ -116,9 +116,10 @@ class MDDataFrame(object):
         self.trajectory_ensemble = trajectory_ensemble
 
         if trajectory_ensemble.protein_trajectory_files is None:
-            warnings.warn('The provided trajectory ensemble'
-            'only contain raw trajectories'
-            'all analysis will be performed on the raw trajectories')
+            warnings.warn('The provided trajectory ensemble '
+            'only contain raw trajectories '
+            'all analysis will be performed on the raw trajectories',
+            stacklevel=2)
             self.trajectory_files = trajectory_ensemble.trajectory_files
             self.protein_trajectory_files = trajectory_ensemble.trajectory_files
             self.system_trajectory_files = trajectory_ensemble.trajectory_files

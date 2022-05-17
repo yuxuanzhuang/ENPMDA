@@ -14,18 +14,21 @@ class get_backbonetorsion(DaskChunkMdanalysis):
     name = 'torsion'
 
     def set_feature_info(self, universe):
+        feature_info = []
         res_phi_list = [x.resindices[0]
                         for x in universe.atoms.residues.phi_selections() if x is not None]
 
         res_psi_list = [x.resindices[0]
                         for x in universe.atoms.residues.psi_selections() if x is not None]
 
-        self._feature_info.extend(['_'.join([str(residex), ang]) for residex, ang in
+        feature_info.extend(['_'.join([str(residex), ang]) for residex, ang in
                                    itertools.product(res_phi_list,
                                                      ['phi_cos', 'phi_sin'])])
-        self._feature_info.extend(['_'.join([str(residex), ang]) for residex, ang in
+        feature_info.extend(['_'.join([str(residex), ang]) for residex, ang in
                                    itertools.product(res_psi_list,
                                                      ['psi_cos', 'psi_sin'])])
+
+        return feature_info
 
     def run_analysis(self, universe, start, stop, step):
         phi_ag = [x for x in universe.atoms.residues.phi_selections()
@@ -55,7 +58,7 @@ class get_atomic_position(DaskChunkMdanalysis):
     def set_feature_info(self, universe):
         backbone_atoms = universe.select_atoms('backbone')
         return ['_'.join([str(residex), feat]) for residex, feat in itertools.product(
-            backbone_atoms.residues.resindices, ['_bb_pos_x', '_bb_pos_y', '_bb_pos_z'])]
+            backbone_atoms.resindices, ['_bb_pos_x', '_bb_pos_y', '_bb_pos_z'])]
 
     def run_analysis(self, universe, start, stop, step):
         backbone_atoms = universe.select_atoms('backbone')
@@ -86,7 +89,7 @@ class get_protein_hydration(DaskChunkMdanalysis):
     universe_file = 'system'
 
     def set_feature_info(self, universe):
-        self._feature_info = ['protein_hydration']
+        return ['protein_hydration']
 
     def run_analysis(self, universe, start, stop, step):
 
