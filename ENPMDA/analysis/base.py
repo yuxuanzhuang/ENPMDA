@@ -1,3 +1,39 @@
+"""\
+========
+Analysis
+========
+The :class:`~ENPMDA.analysis.DaskChunkMdanalysis` class is
+the base class to define multi-frame parallel analysis for
+the MD trajectories. It functions as a wrapper of the
+MDAnalysis analysis functions to map the analysis to the Dask dataframe.
+This class takes care of loading the right universe and dumping the
+results as a `npy` file to avoid huge memory footprint
+and dask scheduler clogging. 
+
+To define a new analysis, ``DaskChunkMdanalysis`` needs to be subclassed.
+`run_analysis` need to be defined. ``name`` will be the feature name
+appending to the dataframe. In default, only protein universe file
+will be used to run analysis. It can be overridden by defining
+``universe_file=system``. Some information of the feature can also be
+provided and stored in ``_feature_info``::
+
+    from ENPMDA.analysis import DaskChunkMdanalysis
+    class NewAnalysis(DaskChunkMdanalysis):
+        name = 'newanalysis'
+        universe_file = 'system'
+
+        def run_analysis(self, universe, start, stop, step):
+            self._feature_info = ['new_analysis']
+            result = []
+            for ts in universe.trajectory[start:stop:step]:
+                result.append(some_analysis(universe.atoms))
+            return result
+
+Classes
+=======
+.. autoclass:: DaskChunkMdanalysis
+   :members:
+"""
 import os
 import dask
 import numpy as np
@@ -7,16 +43,14 @@ import itertools
 
 
 class AnalysisResult(dict):
+    """
+    This class is used internally to store the results of the analysis.
+    """
+
     def __init__(self,
                  md_data,
                  working_dir,
                  timestamp):
-        """
-        md_data: dask.dataframe.core.DataFrame
-        store all the data
-
-        reference structures
-        """
         super().__init__()
 
         self.md_data = md_data
@@ -101,11 +135,17 @@ class AnalysisResult(dict):
             dataframe[item] = self[item].iloc[:, 1]
 
     @property
-    def filename(self, timestamp=None):
+    def filename(self):
         return self.working_dir + '/analysis_results/' + self.timestamp + '/'
 
 
 class DaskChunkMdanalysis(object):
+    """
+    This class is the base class for all analysis classes.
+    The analysis results will be dumped as a `npy` file with
+    unique uuid for each partition.
+    """
+
     name = 'analysis'
     universe_file = 'protein'
 
@@ -149,6 +189,9 @@ class DaskChunkMdanalysis(object):
 #        return list(itertools.chain.from_iterable(result))
 
     def run_analysis(self, universe, start, stop, step):
+        """
+        The function to be overwritten by the analysis class.
+        """
         raise NotImplementedError('Only for inheritance.')
 
     @property

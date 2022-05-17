@@ -280,4 +280,4 @@ class TrajectoryEnsemble(object):
         """
         The saving location of all the pickled files.
         """
-        return self.working_dir + self.ensemble_name + '/'
+        return os.path.abspath(self.working_dir + self.ensemble_name) + '/'

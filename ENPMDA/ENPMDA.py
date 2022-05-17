@@ -278,4 +278,4 @@ class MDDataFrame(object):
         """
         The saving location of all the pickled files.
         """
-        return self.working_dir + self.dataframe_name + '/'
+        return os.path.abspath(self.working_dir + self.dataframe_name) + '/'

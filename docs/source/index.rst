@@ -6,13 +6,10 @@ Welcome to Ensemble Analysis's documentation!
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Overview:
 
    readme
-   installation
-   contributing
-   authors
-   history
+
 
 .. toctree::
     :maxdepth: 0
@@ -26,7 +23,16 @@ Welcome to Ensemble Analysis's documentation!
 
     examples/examples
 
+.. toctree::
+    :maxdepth: 0
+    :caption: Contents:
 
+    installation
+    contributing
+    authors
+    history
+    
+     
 Indices and tables
 ==================
 * :ref:`genindex`
