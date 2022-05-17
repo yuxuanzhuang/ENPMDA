@@ -102,7 +102,7 @@ class TestAddTrajEnsemble(object):
                            "Dataframe shape is not correct")
         assert_equal(md_dataframe.dataframe.columns.tolist(),
                      ['universe_protein', 'universe_system', 'system',
-                         'traj_time', 'frame', 'traj_time', 'stride'],
+                         'traj_name', 'frame', 'traj_time', 'stride'],
                      "Dataframe columns are not correct")
 
         assert_equal(md_dataframe.npartitions, 10,

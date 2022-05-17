@@ -234,9 +234,17 @@ class MDDataFrame(object):
         if not self.computed:
             self.compute()
 
-        return self.analysis_results.get_feature(feature_list)
+        feature_dataframe = self.dataframe[['system', 'traj_name', 'frame', 'traj_time']]
+        for feature in feature_list:
+            raw_data = np.concatenate([np.load(location,
+                                        allow_pickle=True)
+                    for location, df in self.dataframe.groupby(feature,
+                    sort=False)])
+            raw_data =  raw_data.reshape(raw_data.shape[0], -1)
+            feat_info = np.load(self.analysis_results.filename + feature + '_feature_info.npy')
+            feature_dataframe[feat_info] = raw_data
+        return feature_dataframe
 
-    
 
     def save(self, filename='dataframe'):
         """
