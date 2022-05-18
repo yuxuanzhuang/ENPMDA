@@ -13,18 +13,19 @@ and dask scheduler clogging.
 To define a new analysis,
 :class:`~ENPMDA.analysis.base.DaskChunkMdanalysis`
 needs to be subclassed.
-`run_analysis` need to be defined. ``name`` will be the feature name
-appending to the dataframe. In default, only protein universe file
-will be used to run analysis. It can be overridden by defining
-``universe_file=system``. Some information of the feature can also be
-provided and stored in ``_feature_info``::
+``set_feature_info(self, universe)`` and ``run_analysis(self, universe, start, stop, step)`` need to be defined. ``set_feature_info`` should return
+a list of feature name e.g. the name of each torsion angle. ``run_analysis`` should return a list of analysis results.
+
+``name`` will be the feature name appending to the dataframe.
+In default, only protein universe file will be used to run analysis.
+It can be overridden by defining ``universe_file=system``::
 
     from ENPMDA.analysis import DaskChunkMdanalysis
     class NewAnalysis(DaskChunkMdanalysis):
         name = 'new_analysis'
         universe_file = 'protein'
 
-        def get_feature_info(self, universe):
+        def set_feature_info(self, universe):
             return ['some_info']
 
         def run_analysis(self, universe, start, stop, step):
@@ -128,7 +129,6 @@ class DaskChunkMdanalysis(object):
     The analysis results will be dumped as a `npy` file with
     unique uuid for each partition.
     """
-
     name = 'analysis'
     universe_file = 'protein'
 
@@ -164,13 +164,16 @@ class DaskChunkMdanalysis(object):
             del universe
 
         result_ordered = list(itertools.chain.from_iterable(result))
+        
         # store results and only return the location of the files
         np.save(self.location, result_ordered)
         n_result = len(result_ordered)
         del result_ordered
+        
         return n_result * [self.location]
 
-#        return list(itertools.chain.from_iterable(result))
+        # not returning the actual array 
+        # return list(itertools.chain.from_iterable(result))
 
     def set_feature_info(self, universe):
         """
