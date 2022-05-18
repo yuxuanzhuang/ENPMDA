@@ -30,6 +30,12 @@ setup(
     name='ENPMDATests',
     packages=find_packages(),
     package_dir={'ENPMDATests': 'ENPMDATests'},
+    package_data={'ENPMDATests':
+                  ['datafile/ensemble_AlaDipeptide/rep*/*.tpr',
+                   'datafile/ensemble_AlaDipeptide/rep*/*.pdb',
+                   'datafile/ensemble_AlaDipeptide/rep*/*.xtc'
+                  ]
+                 },
     install_requires=[
         'pytest>=3.3.0',
         'hypothesis',
