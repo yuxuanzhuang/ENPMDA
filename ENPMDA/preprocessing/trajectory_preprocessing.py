@@ -16,7 +16,12 @@ A ``TrajectoryEnsemble`` is created from files::
                                       trajectory_list=ensemble_traj)
 
 In order to add transformations e.g. wrap/unwrap, extra ``tpr_list``
-is required as input to provide bonded information.
+is required as input to provide bonded information. Note the speed of
+on-the-fly transformations is really slow for large systems and I
+recommend patching https://github.com/MDAnalysis/mdanalysis/pull/3169
+to your MDAnalysis installation. Alternatively, you can do trajectory
+preprocessing in advance (with e.g. ``gmx trjconv``) and use the output
+trajectory while setting ``tpr_list=None`` and ``only_raw=True``.
 
 
 Classes
@@ -34,6 +39,7 @@ import os
 import MDAnalysis as mda
 import MDAnalysis.transformations as trans
 import dask
+import numpy as np
 
 from ENPMDA.utils import GroupHug
 
@@ -85,6 +91,7 @@ class TrajectoryEnsemble(object):
         skip: int, optional
             The number of frame interval to skip.
             This number only applies to the processed trajectory.
+            If you set `only_raw=True`, this skip number will be ignored.
 
         timestamp: str, optional
             The timestamp of creating the ensemble
@@ -99,7 +106,6 @@ class TrajectoryEnsemble(object):
             Otherwise, both processed trajectories for protein and
             system will be returned.
         """
-
         if len(topology_list) != len(trajectory_list):
             raise ValueError(
                 'topology_list and trajectory_list must have the same length.')
@@ -117,6 +123,9 @@ class TrajectoryEnsemble(object):
             print('No tpr_list provided. \n',
                   'PBC and chain cannot be fixed.')
         else:
+            if len(tpr_list) != len(trajectory_list):
+                raise ValueError(
+                    'tpr_list and trajectory_list must have the same length.')
             self.fix_chain = True
 
         if not os.path.isabs(self.ensemble_name):
@@ -124,14 +133,22 @@ class TrajectoryEnsemble(object):
         else:
             self.working_dir = ''
 
+        # store meta information
+        self.trajectory_dt = np.zeros(len(self.trajectory_list))
+        self.trajectory_time = np.zeros(len(self.trajectory_list))
+
         os.makedirs(self.filename, exist_ok=True)
 
+    def load_ensemble(self):
+        r"""Load the ensemble of trajectories.
+        """
         if self.updating or not os.path.isfile(
                 self.filename + "raw_traj.pickle"):
             self._processing_ensemble()
         else:
             self.trajectory_files = pickle.load(
                 open(self.filename + "raw_traj.pickle", "rb"))
+                
         if not self.only_raw:
             if self.updating or not os.path.isfile(
                     self.filename + "protein.pickle"):
@@ -140,7 +157,7 @@ class TrajectoryEnsemble(object):
                 self.protein_trajectory_files = pickle.load(
                     open(self.filename + "protein.pickle", "rb"))
 
-            if updating or not os.path.isfile(self.filename + "system.pickle"):
+            if self.updating or not os.path.isfile(self.filename + "system.pickle"):
                 self._processing_system()
             else:
                 self.system_trajectory_files = pickle.load(
@@ -148,6 +165,12 @@ class TrajectoryEnsemble(object):
         else:
             self.system_trajectory_files = None
             self.protein_trajectory_files = None
+
+        # check if dt is the same
+        if not len(set(self.trajectory_dt)) <= 1:
+            warnings.warn('dt is not the same for all trajectories.',
+                        stacklevel=2)
+
     def _processing_ensemble(self):
         load_job_list = []
         if not os.path.isfile(self.filename + "raw_traj.pickle"):
@@ -217,24 +240,34 @@ class TrajectoryEnsemble(object):
                              trajectory)
 
             u_prot = u.select_atoms('protein')
+
+            # only work in the presence of bonded information
             if self.fix_chain:
                 u_bond = mda.Universe(self.tpr_list[ind])
                 u.add_bonds(u_bond.bonds.to_indices())
 
                 prot_chain_list = []
+
+                # group all the protein chains
                 for chain in u_prot.segments:
                     prot_chain_list.append(chain.atoms)
-                non_prot = u.select_atoms('not protein')
+
+#                non_prot = u.select_atoms('not protein')
                 prot_group = GroupHug(*prot_chain_list)
-                wrap = trans.wrap(non_prot)
                 unwrap = trans.unwrap(u.atoms)
+                
+                # wrap = trans.wrap(non_prot)
+
                 center_in_box = trans.center_in_box(u_prot)
 
             rot_fit_trans = trans.fit_rot_trans(
                 u.select_atoms('name CA'), u.select_atoms('name CA'))
+
             if self.fix_chain:
                 u.trajectory.add_transformations(
-                    *[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
+                     *[unwrap, prot_group, center_in_box, rot_fit_trans])
+
+#                    *[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
             else:
                 u.trajectory.add_transformations(*[rot_fit_trans])
 
@@ -253,10 +286,17 @@ class TrajectoryEnsemble(object):
         with open(self.filename + '_'.join(trajectory.split('/')) + '.pickle', 'wb') as f:
             pickle.dump(u, f)
 
+        if self.only_raw:
+            self.trajectory_dt[ind] = u.trajectory.dt
+        else:
+            self.trajectory_dt[ind] = u.trajectory.dt * self.skip
+
+        # clean-up memory
         del u
         if self.fix_chain:
             del u_bond
         gc.collect()
+
         return self.filename + '_'.join(trajectory.split('/')) + '.pickle'
 
     def _load_preprocessing_trajectory(self, trajectory):
