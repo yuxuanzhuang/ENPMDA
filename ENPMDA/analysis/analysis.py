@@ -14,12 +14,13 @@ class get_backbonetorsion(DaskChunkMdanalysis):
     name = 'torsion'
 
     def set_feature_info(self, universe):
+        prot_ag = universe.select_atoms('protein')
         feature_info = []
         res_phi_list = [x.resindices[0]
-                        for x in universe.atoms.residues.phi_selections() if x is not None]
+                        for x in prot_ag.residues.phi_selections() if x is not None]
 
         res_psi_list = [x.resindices[0]
-                        for x in universe.atoms.residues.psi_selections() if x is not None]
+                        for x in prot_ag.residues.psi_selections() if x is not None]
 
         feature_info.extend(['_'.join([str(residex), ang]) for residex, ang in
                                    itertools.product(res_phi_list,
@@ -31,7 +32,8 @@ class get_backbonetorsion(DaskChunkMdanalysis):
         return feature_info
 
     def run_analysis(self, universe, start, stop, step):
-        phi_ag = [x for x in universe.atoms.residues.phi_selections()
+        prot_ag = universe.select_atoms('protein')
+        phi_ag = [x for x in prot_ag.residues.phi_selections()
                   if x is not None]
         phi_angle_ana = mda_dihedral(phi_ag).run(start, stop, step)
         phi_angle = np.concatenate([[np.cos(np.deg2rad(phi_angle_ana.results['angles']))],
@@ -56,7 +58,7 @@ class get_atomic_position(DaskChunkMdanalysis):
     name = 'at_position'
 
     def set_feature_info(self, universe):
-        backbone_atoms = universe.select_atoms('backbone')
+        backbone_atoms = universe.select_atoms('protein and backbone')
         return ['_'.join([str(residex), feat]) for residex, feat in itertools.product(
             backbone_atoms.resindices, ['_bb_pos_x', '_bb_pos_y', '_bb_pos_z'])]
 
@@ -79,7 +81,7 @@ class get_rmsd_init(DaskChunkMdanalysis):
 
     def run_analysis(self, universe, start, stop, step):
 
-        name_backbone = universe.select_atoms('backbone')
+        name_backbone = universe.select_atoms('protein and backbone')
         rmsd = RMSD(name_backbone, name_backbone).run(start, stop, step)
         return rmsd.results['rmsd'].T[2]
 

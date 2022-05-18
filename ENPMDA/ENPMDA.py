@@ -197,7 +197,7 @@ class MDDataFrame(object):
             Whether to overwrite the analysis if it is
             already in the dataframe.
         """
-        if analysis.name in self.analysis_list and not overwrite:
+         if analysis.name in self.analysis_list and not overwrite:
             warnings.warn(f'Analysis {analysis.name} already added, add overwrite=True to overwrite',
                           stacklevel=2)
         elif analysis.name in self.analysis_list and overwrite:
@@ -206,9 +206,11 @@ class MDDataFrame(object):
             self.analysis_list.remove(analysis.name)
             self.analysis_list.append(analysis.name)
             self.analysis_results.add_column_to_results(analysis)
+            print(f'Analysis {analysis.name} overwritten')
         else:
             self.analysis_list.append(analysis.name)
             self.analysis_results.add_column_to_results(analysis)
+            print(f'Analysis {analysis.name} added')
 
     def compute(self):
         """

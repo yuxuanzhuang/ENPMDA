@@ -4,4 +4,5 @@ __author__ = """Yuxuan Zhuang"""
 __email__ = 'yuxuan.zhuang@dbb.su.se'
 __version__ = '0.1.0'
 
+from .base import DaskChunkMdanalysis
 from .analysis import *
