@@ -28,13 +28,14 @@ class TestDDataFrameCreation(object):
         return tempdir
 
     def test_inititialize_trajectoryensemble(self, tempdir):
-        traj_ensembles = TrajectoryEnsemble(ensemble_name= './' + tempdir + '/test_traj_ensemble',
+        traj_ensemble = TrajectoryEnsemble(ensemble_name= './' + tempdir + '/test_traj_ensemble',
                                             topology_list=ensemble_ala_top,
                                             trajectory_list=ensemble_ala_traj,
                                             tpr_list=ensemble_ala_tpr,
                                             updating=False,
                                             only_raw=False)
-        assert_equal(traj_ensembles.filename,
+        traj_ensemble.load_ensemble()
+        assert_equal(traj_ensemble.filename,
                      os.getcwd() + tempdir + '/' + 'test_traj_ensemble' + '/',
                      "ensemble name is not set correctly")
 
@@ -46,13 +47,14 @@ class TestDDataFrameCreation(object):
                      "working dir is not set correctly")
 
     def test_init_trajectoryensemble_abs_path(self, tempdir):
-        traj_ensembles = TrajectoryEnsemble(ensemble_name=tempdir + '/test_traj_ensemble',
+        traj_ensemble = TrajectoryEnsemble(ensemble_name=tempdir + '/test_traj_ensemble',
                                             topology_list=ensemble_ala_top,
                                             trajectory_list=ensemble_ala_traj,
                                             tpr_list=ensemble_ala_tpr,
                                             updating=False,
                                             only_raw=False)
-        assert_equal(traj_ensembles.filename,
+        traj_ensemble.load_ensemble()
+        assert_equal(traj_ensemble.filename,
                      tempdir + '/' + 'test_traj_ensemble' + '/',
                      "ensemble name is not set correctly")
 
@@ -77,21 +79,25 @@ class TestAddTrajEnsemble(object):
 
     @pytest.fixture()
     def traj_ensemble(self, tempdir):
-        return TrajectoryEnsemble(ensemble_name=tempdir + '/test_ensemble',
+        traj_ensemble = TrajectoryEnsemble(ensemble_name=tempdir + '/test_ensemble',
                                   topology_list=ensemble_ala_top,
                                   trajectory_list=ensemble_ala_traj,
                                   tpr_list=ensemble_ala_tpr,
                                   updating=False,
                                   only_raw=False)
+        traj_ensemble.load_ensemble()
+        return traj_ensemble
 
     @pytest.fixture()
     def raw_traj_ensemble(self, tempdir):
-        return TrajectoryEnsemble(ensemble_name=tempdir + '/test_ensemble',
+        traj_ensemble = TrajectoryEnsemble(ensemble_name=tempdir + '/test_ensemble',
                                   topology_list=ensemble_ala_top,
                                   trajectory_list=ensemble_ala_traj,
                                   tpr_list=ensemble_ala_tpr,
                                   updating=False,
                                   only_raw=True)
+        traj_ensemble.load_ensemble()
+        return traj_ensemble
 
     def test_add_trajectory_ensemble(self, md_dataframe, traj_ensemble):
         md_dataframe.add_traj_ensemble(traj_ensemble, npartitions=10)

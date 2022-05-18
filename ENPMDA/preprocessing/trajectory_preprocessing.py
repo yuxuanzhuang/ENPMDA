@@ -11,9 +11,10 @@ to seperated files.
 A ``TrajectoryEnsemble`` is created from files::
 
     from ENPMDA.preprocessing import TrajectoryEnsemble
-    traj_ensembles = TrajectoryEnsemble(ensemble_name='ensemble',
+    traj_ensemble = TrajectoryEnsemble(ensemble_name='ensemble',
                                       topology_list=ensemble_top,
                                       trajectory_list=ensemble_traj)
+    traj_ensemble.load_ensemble()
 
 In order to add transformations e.g. wrap/unwrap, extra ``tpr_list``
 is required as input to provide bonded information. Note the speed of

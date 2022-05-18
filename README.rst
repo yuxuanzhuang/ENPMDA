@@ -59,15 +59,16 @@ Example Code Snippet
     from ENPMDA.analysis import get_backbonetorsion, rmsd_to_init
 
     # construct trajectory ensemble
-    traj_ensembles = TrajectoryEnsemble(
+    traj_ensemble = TrajectoryEnsemble(
                                     ensemble_name='ensemble',
                                     topology_list=ensemble_top_list,
                                     trajectory_list=ensemble_traj_list
                                     )
+    traj_ensemble.load_ensemble()
                                     
     # initilize dataframe and add trajectory ensemble
     md_dataframe = MDDataFrame(dataframe_name='dataframe')
-    md_dataframe.add_traj_ensemble(traj_ensembles, npartitions=16)
+    md_dataframe.add_traj_ensemble(traj_ensemble, npartitions=16)
     
     # add analyses
     md_dataframe.add_analysis(get_backbonetorsion)
