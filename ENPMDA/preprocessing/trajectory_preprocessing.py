@@ -61,6 +61,7 @@ class TrajectoryEnsemble(object):
                  topology_list,
                  trajectory_list,
                  tpr_list=None,
+                 skip=1,
                  timestamp=timestamp,
                  updating=True,
                  only_raw=False):
@@ -80,6 +81,10 @@ class TrajectoryEnsemble(object):
 
         tpr_list: list, optional
             List of tpr files. For providing extra bonded information.
+
+        skip: int, optional
+            The number of frame interval to skip.
+            This number only applies to the processed trajectory.
 
         timestamp: str, optional
             The timestamp of creating the ensemble
@@ -102,6 +107,7 @@ class TrajectoryEnsemble(object):
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
         self.tpr_list = tpr_list
+        self.skip = skip
         self.timestamp = timestamp
         self.updating = updating
         self.only_raw = only_raw
@@ -237,7 +243,7 @@ class TrajectoryEnsemble(object):
                                 u.select_atoms('protein').n_atoms) as W_prot, \
                     mda.Writer(traj_path + '/system.xtc',
                                u.atoms.n_atoms) as W_sys:
-                    for time, ts in enumerate(u.trajectory):
+                    for time, ts in enumerate(u.trajectory[::self.skip]):
                         W_prot.write(u.select_atoms('protein'))
                         W_sys.write(u.atoms)
 
