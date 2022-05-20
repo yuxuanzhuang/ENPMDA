@@ -15,7 +15,7 @@ from numpy.testing import (
 from ENPMDA import MDDataFrame
 from ENPMDA.preprocessing import TrajectoryEnsemble
 from ENPMDATests.datafiles import (
-    ensemble_ala_tpr,
+    ensemble_ala_bonded,
     ensemble_ala_traj,
     ensemble_ala_top
 )
@@ -31,7 +31,7 @@ class TestDDataFrameCreation(object):
         traj_ensemble = TrajectoryEnsemble(ensemble_name= './' + tempdir + '/test_traj_ensemble',
                                             topology_list=ensemble_ala_top,
                                             trajectory_list=ensemble_ala_traj,
-                                            tpr_list=ensemble_ala_tpr,
+                                            bonded_topology_list=ensemble_ala_bonded,
                                             updating=False,
                                             only_raw=False)
         traj_ensemble.load_ensemble()
@@ -50,7 +50,7 @@ class TestDDataFrameCreation(object):
         traj_ensemble = TrajectoryEnsemble(ensemble_name=tempdir + '/test_traj_ensemble',
                                             topology_list=ensemble_ala_top,
                                             trajectory_list=ensemble_ala_traj,
-                                            tpr_list=ensemble_ala_tpr,
+                                            bonded_topology_list=ensemble_ala_bonded,
                                             updating=False,
                                             only_raw=False)
         traj_ensemble.load_ensemble()
@@ -82,7 +82,7 @@ class TestAddTrajEnsemble(object):
         traj_ensemble = TrajectoryEnsemble(ensemble_name=tempdir + '/test_ensemble',
                                   topology_list=ensemble_ala_top,
                                   trajectory_list=ensemble_ala_traj,
-                                  tpr_list=ensemble_ala_tpr,
+                                  bonded_topology_list=ensemble_ala_bonded,
                                   updating=False,
                                   only_raw=False)
         traj_ensemble.load_ensemble()
@@ -93,7 +93,7 @@ class TestAddTrajEnsemble(object):
         traj_ensemble = TrajectoryEnsemble(ensemble_name=tempdir + '/test_ensemble',
                                   topology_list=ensemble_ala_top,
                                   trajectory_list=ensemble_ala_traj,
-                                  tpr_list=ensemble_ala_tpr,
+                                  bonded_topology_list=ensemble_ala_bonded,
                                   updating=False,
                                   only_raw=True)
         traj_ensemble.load_ensemble()

@@ -69,12 +69,14 @@ class MDDataFrame(object):
             It will be used as the folder to save
             all the analysis results. 
             It can also be the absolute path to the folder.
+
         meta_data_list: list, optional
             List of metadata in the dataframe.
             In default, the locations of pickled universes
             of protein and system, the system index, the
             trajectory filename, the frame index, the
             trajectory time, and the stride are stored.
+
         timestamp: str, optional
             The timestamp of creating the ensemble
             It will be set to the current time if not provided.
@@ -103,9 +105,11 @@ class MDDataFrame(object):
         trajectory_ensemble: ENPMDA.TrajectoryEnsemble
             The trajectory ensemble to be added to the
             dataframe.
+
         npartitions: int
             The number of partitions to be used in
             the dask dataframe.
+
         stride: int, optional
             The stride to be used in the dask dataframe.
             It is used to skip frames in the trajectory.
@@ -185,7 +189,7 @@ class MDDataFrame(object):
                                                working_dir=self.filename,
                                                timestamp=self.timestamp)
 
-    def add_analysis(self, analysis, overwrite=False):
+    def add_analysis(self, analysis, overwrite=False, **kwargs):
         """
         Add an analysis to the dataframe.
 
@@ -193,9 +197,13 @@ class MDDataFrame(object):
         ----------
         analysis: ENPMDA.analysis.base.DaskChunkMdanalysis
             The analysis to be added to the dataframe.
+            
         overwrite: bool, optional
             Whether to overwrite the analysis if it is
             already in the dataframe.
+
+        **kwargs: dict, optional
+            Keyword arguments to be passed to the analysis.
         """
         if analysis.name in self.analysis_list and not overwrite:
             warnings.warn(f'Analysis {analysis.name} already added, add overwrite=True to overwrite',
@@ -205,11 +213,11 @@ class MDDataFrame(object):
                           stacklevel=2)
             self.analysis_list.remove(analysis.name)
             self.analysis_list.append(analysis.name)
-            self.analysis_results.add_column_to_results(analysis)
+            self.analysis_results.add_column_to_results(analysis, **kwargs)
             print(f'Analysis {analysis.name} overwritten')
         else:
             self.analysis_list.append(analysis.name)
-            self.analysis_results.add_column_to_results(analysis)
+            self.analysis_results.add_column_to_results(analysis, **kwargs)
             print(f'Analysis {analysis.name} added')
 
     def compute(self):
@@ -257,7 +265,7 @@ class MDDataFrame(object):
         ----------
         filename: str, optional
             The name of the pickle file.
-            It will be saved in the working directory
+            It will be saved in the working directory.
         """
 
         if not self.computed:

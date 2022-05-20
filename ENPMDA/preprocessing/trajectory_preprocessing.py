@@ -12,17 +12,17 @@ A ``TrajectoryEnsemble`` is created from files::
 
     from ENPMDA.preprocessing import TrajectoryEnsemble
     traj_ensemble = TrajectoryEnsemble(ensemble_name='ensemble',
-                                      topology_list=ensemble_top,
-                                      trajectory_list=ensemble_traj)
+                                       topology_list=ensemble_top,
+                                       trajectory_list=ensemble_traj)
     traj_ensemble.load_ensemble()
 
-In order to add transformations e.g. wrap/unwrap, extra ``tpr_list``
+In order to add transformations e.g. wrap/unwrap, extra ``bonded_topology_list``
 is required as input to provide bonded information. Note the speed of
 on-the-fly transformations is really slow for large systems and I
 recommend patching https://github.com/MDAnalysis/mdanalysis/pull/3169
 to your MDAnalysis installation. Alternatively, you can do trajectory
 preprocessing in advance (with e.g. ``gmx trjconv``) and use the output
-trajectory while setting ``tpr_list=None`` and ``only_raw=True``.
+trajectory while setting ``bonded_topology_list=None`` and ``only_raw=True``.
 
 
 Classes
@@ -59,15 +59,15 @@ class TrajectoryEnsemble(object):
 
     Warning
     -------
-    It will generate `protein.pdb`, `system.pdb`,
-    `protein.xtc`, and `system.xtc` files
+    If `only_raw=False`, `protein.pdb`, `system.pdb`,
+    `protein.xtc`, and `system.xtc` files will be generated
     in the same folder as the loading trajectory.
     """
     def __init__(self,
                  ensemble_name,
                  topology_list,
                  trajectory_list,
-                 tpr_list=None,
+                 bonded_topology_list=None,
                  skip=1,
                  timestamp=timestamp,
                  updating=True,
@@ -86,7 +86,7 @@ class TrajectoryEnsemble(object):
         trajectory_list: list
             List of trajectory files, e.g. xtc, trr, etc.
 
-        tpr_list: list, optional
+        bonded_topology_list: list, optional
             List of tpr files. For providing extra bonded information.
 
         skip: int, optional
@@ -104,8 +104,9 @@ class TrajectoryEnsemble(object):
 
         only_raw: bool, optional
             If True, only the raw trajectory will be returned.
-            Otherwise, both processed trajectories for protein and
-            system will be returned.
+            Otherwise, on-the-fly transformation will be applied
+            to trajectories and processed trajectories
+            for protein and system will be returned.
         """
         if len(topology_list) != len(trajectory_list):
             raise ValueError(
@@ -113,20 +114,20 @@ class TrajectoryEnsemble(object):
         self.ensemble_name = ensemble_name
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
-        self.tpr_list = tpr_list
+        self.bonded_topology_list = bonded_topology_list
         self.skip = skip
         self.timestamp = timestamp
         self.updating = updating
         self.only_raw = only_raw
 
-        if self.tpr_list is None:
+        if self.bonded_topology_list is None:
             self.fix_chain = False
-            print('No tpr_list provided. \n',
+            print('No bonded_topology_list provided. \n',
                   'PBC and chain cannot be fixed.')
         else:
-            if len(tpr_list) != len(trajectory_list):
+            if len(bonded_topology_list) != len(trajectory_list):
                 raise ValueError(
-                    'tpr_list and trajectory_list must have the same length.')
+                    'bonded_topology_list and trajectory_list must have the same length.')
             self.fix_chain = True
 
         if not os.path.isabs(self.ensemble_name):
@@ -244,7 +245,7 @@ class TrajectoryEnsemble(object):
 
             # only work in the presence of bonded information
             if self.fix_chain:
-                u_bond = mda.Universe(self.tpr_list[ind])
+                u_bond = mda.Universe(self.bonded_topology_list[ind])
                 u.add_bonds(u_bond.bonds.to_indices())
 
                 prot_chain_list = []
@@ -256,33 +257,27 @@ class TrajectoryEnsemble(object):
 #                non_prot = u.select_atoms('not protein')
                 prot_group = GroupHug(*prot_chain_list)
                 unwrap = trans.unwrap(u.atoms)
-                
                 # wrap = trans.wrap(non_prot)
-
                 center_in_box = trans.center_in_box(u_prot)
 
-            rot_fit_trans = trans.fit_rot_trans(
-                u.select_atoms('name CA'), u.select_atoms('name CA'))
+                rot_fit_trans = trans.fit_rot_trans(
+                    u.select_atoms('name CA'), u.select_atoms('name CA'))
 
-            if self.fix_chain:
                 u.trajectory.add_transformations(
                      *[unwrap, prot_group, center_in_box, rot_fit_trans])
-
 #                    *[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
-            else:
-                u.trajectory.add_transformations(*[rot_fit_trans])
 
             if not self.only_raw:
                 with mda.Writer(traj_path + '/protein.xtc',
-                                u.select_atoms('protein').n_atoms) as W_prot, \
+                                u_prot.n_atoms) as W_prot, \
                     mda.Writer(traj_path + '/system.xtc',
                                u.atoms.n_atoms) as W_sys:
                     for time, ts in enumerate(u.trajectory[::self.skip]):
                         W_prot.write(u.select_atoms('protein'))
                         W_sys.write(u.atoms)
 
-                u.select_atoms('protein').write(traj_path + '/protein.pdb')
-                u.atoms.write(traj_path + '/system.pdb')
+                u_prot.write(traj_path + '/protein.pdb', bonds=None)
+                u.atoms.write(traj_path + '/system.pdb', bonds=None)
 
         with open(self.filename + '_'.join(trajectory.split('/')) + '.pickle', 'wb') as f:
             pickle.dump(u, f)
