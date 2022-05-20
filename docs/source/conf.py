@@ -43,6 +43,7 @@ extensions = [
               'sphinx.ext.intersphinx',
               'sphinx.ext.mathjax',
               'sphinx.ext.napoleon',
+              'sphinxcontrib.mermaid',
               'sphinx.ext.todo',
               'sphinx_sitemap',
               'sphinx_rtd_theme']

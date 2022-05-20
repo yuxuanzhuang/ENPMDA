@@ -3,6 +3,7 @@ numpy
 sphinx
 nbsphinx
 sphinxcontrib-bibtex
+sphinxcontrib-mermaid
 matplotlib
 networkx
 sphinxcontrib-katex

@@ -45,5 +45,55 @@ simply wrapping MDAnalysis analysis functions without worrying
 about the parallel machinery behind.
 
 
+Example Code Snippet
+--------------------
+
+.. code:: python
+
+    from ENPMDA import MDDataFrame
+    from ENPMDA.preprocessing import TrajectoryEnsemble
+    from ENPMDA.analysis import get_backbonetorsion, rmsd_to_init
+
+    # construct trajectory ensemble
+    traj_ensemble = TrajectoryEnsemble(
+                                    ensemble_name='ensemble',
+                                    topology_list=ensemble_top_list,
+                                    trajectory_list=ensemble_traj_list
+                                    )
+    traj_ensemble.load_ensemble()
+                                    
+    # initilize dataframe and add trajectory ensemble
+    md_dataframe = MDDataFrame(dataframe_name='dataframe')
+    md_dataframe.add_traj_ensemble(traj_ensemble, npartitions=16)
+    
+    # add analyses
+    md_dataframe.add_analysis(get_backbonetorsion)
+    md_dataframe.add_analysis(rmsd_to_init)
+
+    
+    # save dataframe
+    md_dataframe.save('results')
+    
+    # retrieve feature
+    feature_dataframe = md_dataframe.get_feature([
+                        'torsion',
+                        'rmsd_to_init'
+                        ])
+    
+    # plot analysis results
+    import seaborn as sns
+    sns.barplot(data=feature_dataframe,
+                x='system',
+                y='rmsd_to_init')
+    sns.lineplot(data=feature_dataframe,
+                 x='traj_time',
+                 y='0_phi_cos',
+                 hue='system')
+
+Workflow Illustration
+---------------------
+
+.. image:: https://mermaid.ink/img/pako:eNqFklFPwjAQx7_Kpc8DjY8EMcLAmBhjhJgYRki3HqPStbPtAnPw3b0xppCY2Jde7-5_90vvKpYYgazHUsvzNTy9Rhro3M9HRjtvi8TDzPIPTLyx5Vg7zGKFC-h0BjBsUofVZyGTDSRrTDZSp2B0aurbyaxQ3EsqdHc45R6F-3d0exjNI8aFgH48iI0WKJbe5EaZtFwq6Xz_Kh4EFLQDo1W5tHx7O7MFRmxxUerZ7CGsfIso0QFXFrkoIbeYW5OgcyiCuhBgN-3Cy3AEK7lD0UKFZ1Bjgvq7X_jbb_I_-Y9scpQ9kIIYtVsZm6GAC96tVApihK2V3qPukpYFLEObcSloMlVdifRrzAinR2bMHVnBmf-NW8lpMq5OqJrWEVsZ7afy66S6uc53J1UbnPBMqrIJP2qPNmJ1mD7mQAhFLrjHsZAEynq0DBgwXngzLXXSvpucUHLan6xxHr4B8eTGgA
+
 * Free software: GNU General Public License v3
 * Documentation: https://ENPMDA.readthedocs.io.

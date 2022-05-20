@@ -98,16 +98,8 @@ Example Code Snippet
 Workflow Illustration
 ---------------------
 
-```mermaid
-    graph LR;
-        A[Construct TrajectoryEnsemble] --> B;
-        B{quick checking ongoing simulations?};
-        B --> |Yes| C["add <b>bonded_topology_list</b>, <br>only_raw=True"];
-        B --> |No| D{trajectories already preprocessed,<br> e.g. PBC fixed?};
-        D --> |Yes| E["only_raw=True"];
-        D --> |No| F["add <b>bonded_topology_list</b>"];
-        F --> G["transformed trajectories will be written."];
-```
+.. image:: https://mermaid.ink/img/pako:eNqFklFPwjAQx7_Kpc8DjY8EMcLAmBhjhJgYRki3HqPStbPtAnPw3b0xppCY2Jde7-5_90vvKpYYgazHUsvzNTy9Rhro3M9HRjtvi8TDzPIPTLyx5Vg7zGKFC-h0BjBsUofVZyGTDSRrTDZSp2B0aurbyaxQ3EsqdHc45R6F-3d0exjNI8aFgH48iI0WKJbe5EaZtFwq6Xz_Kh4EFLQDo1W5tHx7O7MFRmxxUerZ7CGsfIso0QFXFrkoIbeYW5OgcyiCuhBgN-3Cy3AEK7lD0UKFZ1Bjgvq7X_jbb_I_-Y9scpQ9kIIYtVsZm6GAC96tVApihK2V3qPukpYFLEObcSloMlVdifRrzAinR2bMHVnBmf-NW8lpMq5OqJrWEVsZ7afy66S6uc53J1UbnPBMqrIJP2qPNmJ1mD7mQAhFLrjHsZAEynq0DBgwXngzLXXSvpucUHLan6xxHr4B8eTGgA
+
 
 User Cases
 ----------

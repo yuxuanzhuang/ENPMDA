@@ -9,6 +9,7 @@ Welcome to Ensemble Analysis's documentation!
    :caption: Overview:
 
    readme
+   installation
 
 
 .. toctree::
@@ -25,9 +26,8 @@ Welcome to Ensemble Analysis's documentation!
 
 .. toctree::
     :maxdepth: 0
-    :caption: Contents:
+    :caption: Others:
 
-    installation
     contributing
     authors
     history

@@ -4,6 +4,16 @@
 Installation
 ============
 
+Recommended installation
+------------------------
+
+To install the latest version of the package:
+
+.. code-block:: shell
+
+    $ pip install -e "git+https://github.com/yuxuanzhuang/enpmda"
+    $ pip install -e "git+https://github.com/yuxuanzhuang/enpmda#subdirectory=tests"
+
 
 Stable release
 --------------
