@@ -97,6 +97,20 @@ Example Code Snippet
 
 Workflow Illustration
 ---------------------
+
+```mermaid
+    graph LR;
+        A[Construct TrajectoryEnsemble] --> B;
+        B{quick checking ongoing simulations?};
+        B --> |Yes| C["add <b>bonded_topology_list</b>, <br>only_raw=True"];
+        B --> |No| D{trajectories already preprocessed,<br> e.g. PBC fixed?};
+        D --> |Yes| E["only_raw=True"];
+        D --> |No| F["add <b>bonded_topology_list</b>"];
+        F --> G["transformed trajectories will be written."];
+```
+
+User Cases
+----------
 .. image:: /docs/source/_static/example.png
   :width: 700
   :alt: Illustration of the ensemble analysis workflow.
