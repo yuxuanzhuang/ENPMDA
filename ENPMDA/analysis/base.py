@@ -116,7 +116,7 @@ class AnalysisResult(dict):
 
     def append_to_dataframe(self, dataframe):
         for item in self.keys():
-            dataframe[item] = self[item].iloc[:, 1]
+            dataframe[item] = self[item].iloc[:, -1]
 
     @property
     def filename(self):
@@ -150,7 +150,8 @@ class DaskChunkMdanalysis(object):
             # if system information has to be used set `universe_file =
             # 'system'`
             if self.universe_file == 'protein':
-                universe = pickle.load(open(df_sys.universe_protein.iloc[0], "rb"))
+                universe = pickle.load(
+                    open(df_sys.universe_protein.iloc[0], "rb"))
             else:
                 universe = pickle.load(
                     open(df_sys.universe_system.iloc[0], "rb"))

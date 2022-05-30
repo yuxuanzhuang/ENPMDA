@@ -205,11 +205,12 @@ class MDDataFrame(object):
         **kwargs: dict, optional
             Keyword arguments to be passed to the analysis.
         """
+        self.computed = False
         if analysis.name in self.analysis_list and not overwrite:
             warnings.warn(f'Analysis {analysis.name} already added, add overwrite=True to overwrite',
                           stacklevel=2)
         elif analysis.name in self.analysis_list and overwrite:
-            warnings.warn(f'Analysis {analysis.name} already added, overwriting!',
+            warnings.warn(f'Analysis {analysis.name} overwrites!',
                           stacklevel=2)
             self.analysis_list.remove(analysis.name)
             self.analysis_list.append(analysis.name)
@@ -278,7 +279,7 @@ class MDDataFrame(object):
             md_data_old = pickle.load(
                 open(f'{self.filename}{filename}.pickle', 'rb'))
 
-            if set(md_data_old.universe) != set(self.dataframe.universe):
+            if set(md_data_old.universe_protein) != set(self.dataframe.universe_protein):
                 print('New seeds added')
                 with open(f'{self.filename}{filename}.pickle', 'wb') as f:
                     pickle.dump(self.dataframe, f)
@@ -311,6 +312,20 @@ class MDDataFrame(object):
 
         with open(f'{self.filename}{filename}_md_dataframe.pickle', 'wb') as f:
             pickle.dump(self, f)
+        
+    @staticmethod
+    def load_dataframe(filename):
+        """
+        Load the dataframe from a pickle file.
+
+        Parameters
+        ----------
+        filename: str, optional
+            The name of the pickle file.
+        """
+        with open(f'{filename}.pickle', 'rb') as f:
+            md_data = pickle.load(f)
+        return md_data
 
     @property
     def filename(self):
