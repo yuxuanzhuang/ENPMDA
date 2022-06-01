@@ -253,8 +253,9 @@ class MDDataFrame(object):
                     sort=False)])
             raw_data =  raw_data.reshape(raw_data.shape[0], -1)
             feat_info = np.load(self.analysis_results.filename + feature + '_feature_info.npy')
-            feature_dataframe[feat_info] = raw_data
-        return feature_dataframe
+            raw_data_concat = pd.concat(raw_data, keys=feat_info)
+#            feature_dataframe[feat_info] = raw_data
+        return pd.concat([feature_dataframe, raw_data_concat], axis=1) 
 
 
     def save(self, filename='dataframe'):
