@@ -30,6 +30,7 @@ import MDAnalysis as mda
 import os
 import pickle
 import shutil
+import gc
 
 from ENPMDA.analysis.base import AnalysisResult
 from ENPMDA.preprocessing import TrajectoryEnsemble
@@ -253,8 +254,7 @@ class MDDataFrame(object):
                     sort=False)])
             raw_data =  raw_data.reshape(raw_data.shape[0], -1)
             feat_info = np.load(self.analysis_results.filename + feature + '_feature_info.npy')
-            raw_data_concat = pd.concat(raw_data, keys=feat_info)
-#            feature_dataframe[feat_info] = raw_data
+            raw_data_concat = pd.DataFrame(raw_data, columns=feat_info)
         return pd.concat([feature_dataframe, raw_data_concat], axis=1) 
 
 
@@ -313,6 +313,32 @@ class MDDataFrame(object):
 
         with open(f'{self.filename}{filename}_md_dataframe.pickle', 'wb') as f:
             pickle.dump(self, f)
+        
+    def sort_analysis_result(self):
+        if not self.computed:
+            self.compute()
+            
+        for feature in self.analysis_list:
+            if self.dataframe[feature][0].split('_')[-1] == '0.npy':
+                print(f"{feature} already sorted")
+                continue
+            print(f'start to sort {feature}.')
+
+            raw_data = np.concatenate([np.load(location, allow_pickle=True)
+                            for location, df in self.dataframe.groupby(feature, sort=False)])
+            _ = [os.remove(location) for location, df in self.dataframe.groupby(feature, sort=False)]
+            reordered_feat_loc = []
+            for sys, df in self.dataframe.groupby(['system']):
+                sys_data = raw_data[df.index[0]:df.index[-1]+1]
+                np.save(f"{self.analysis_results.filename}{feature}_{sys}.npy", sys_data)
+                reordered_feat_loc.append([f"{self.analysis_results.filename}{feature}_{sys}.npy"] * len(df))
+
+            self.dataframe[feature] = np.concatenate(reordered_feat_loc)
+            print(f'{feature} sorted.')
+            del raw_data
+            del sys_data
+            gc.collect()
+
         
     @staticmethod
     def load_dataframe(filename):
