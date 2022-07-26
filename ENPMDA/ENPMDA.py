@@ -87,6 +87,7 @@ class MDDataFrame(object):
             columns=meta_data_list
         )
         self.computed = False
+        self.sorted = False
         if not os.path.isabs(self.dataframe_name):
             self.working_dir = os.getcwd() + '/'
         else:
@@ -234,7 +235,19 @@ class MDDataFrame(object):
         self.computed = True
 
 
-    def get_feature(self, feature_list):
+    def get_feature_info(self, feature_name):
+        """
+        Get the information about a feature.
+
+        Parameters
+        ----------
+        feature_name: str
+            The name of the feature.
+        """
+        feat_info = np.load(self.analysis_results.filename + feature_name + '_feature_info.npy')
+        return feat_info
+
+    def get_feature(self, feature_list, in_memory=True):
         """
         Get the features from the dataframe.
 
@@ -246,19 +259,39 @@ class MDDataFrame(object):
         if not self.computed:
             self.compute()
 
-        feature_dataframe = self.dataframe[['system', 'traj_name', 'frame', 'traj_time']].copy()
-        for feature in feature_list:
-            raw_data = np.concatenate([np.load(location,
-                                        allow_pickle=True)
-                    for location, df in self.dataframe.groupby(feature,
-                    sort=False)])
-            raw_data =  raw_data.reshape(raw_data.shape[0], -1)
-            feat_info = np.load(self.analysis_results.filename + feature + '_feature_info.npy')
-            raw_data_concat = pd.DataFrame(raw_data, columns=feat_info)
-        return pd.concat([feature_dataframe, raw_data_concat], axis=1) 
+        if isinstance(feature_list, str):
+            feature_list = [feature_list]
+
+        if in_memory:
+            feature_dataframe = self.dataframe[['system', 'traj_name', 'frame', 'traj_time']].copy()
+            for feature in feature_list:
+                raw_data = np.concatenate([np.load(location,
+                                            allow_pickle=True)
+                        for location, df in self.dataframe.groupby(feature,
+                        sort=False)])
+                raw_data =  raw_data.reshape(raw_data.shape[0], -1)
+                feat_info = np.load(self.analysis_results.filename + feature + '_feature_info.npy')
+                raw_data_concat = pd.DataFrame(raw_data, columns=feat_info)
+            return pd.concat([feature_dataframe, raw_data_concat], axis=1)
+        else:
+            if not self.sorted:
+                self.sort_analysis_result()
+            feature_dataframe = pd.DataFrame(columns=['system', 'traj_name', 'n_frame', 'total_time'] + feature_list)
+            
+            for ind, (system, df) in enumerate(self.dataframe.groupby('system',
+                    sort=False)):
+                feature_dataframe = pd.concat([feature_dataframe,
+                pd.DataFrame([[
+                system,
+                df.traj_name.values[-1],
+                df.frame.values[-1],
+                df.traj_time.values[-1]] + [df[feat].values[-1] for feat in feature_list]],
+                columns=feature_dataframe.columns)])
+
+            return feature_dataframe
 
 
-    def save(self, filename='dataframe'):
+    def save(self, filename='dataframe', overwrite=False):
         """
         Compute the analysis results and
         save the dataframe to a pickle file.
@@ -268,49 +301,77 @@ class MDDataFrame(object):
         filename: str, optional
             The name of the pickle file.
             It will be saved in the working directory.
+        overwrite: bool, optional
+            Whether to overwrite the file if it exists.
         """
 
         if not self.computed:
             self.compute()
 
+        if overwrite:
+            self.dump(filename)
+            return
+
         if not os.path.exists(f'{self.filename}{filename}.pickle'):
-            with open(f'{self.filename}{filename}.pickle', 'wb') as f:
-                pickle.dump(self.dataframe, f)
+            self.dump(filename)
         else:
-            md_data_old = pickle.load(
-                open(f'{self.filename}{filename}.pickle', 'rb'))
+            md_dataframe_old = pickle.load(
+                open(f'{self.filename}{filename}_md_dataframe.pickle', 'rb'))
+            md_data_old = md_dataframe_old.dataframe
 
             if set(md_data_old.universe_protein) != set(self.dataframe.universe_protein):
-                print('New seeds added')
-                with open(f'{self.filename}{filename}.pickle', 'wb') as f:
-                    pickle.dump(self.dataframe, f)
-            elif md_data_old.shape[0] != self.dataframe.shape[0]:
-                print('N.frame changed')
+                print('Seeds changed')
+                self.dump(filename)
+
+            elif set(md_data_old.columns) != set(self.dataframe.columns):
+                print('# features changed')
 
                 old_cols = md_data_old.columns
-                new_cols = self.md_data.columns
+                new_cols = self.dataframe.columns
                 print('New: ' + np.setdiff1d(new_cols, old_cols))
+
+                old_extra_cols = np.setdiff1d(old_cols, new_cols)
+
+                for old_extra_col in old_extra_cols:
+                    self.analysis_list.append(old_extra_col)
+                    shutil.copyfile(f'{md_dataframe_old.analysis_results.filename}{old_extra_col}_feature_info.npy',
+                            f'{self.analysis_results.filename}{old_extra_col}_feature_info.npy')
 
                 extra_cols = np.setdiff1d(new_cols, old_cols)
 
                 for extra_col in extra_cols:
-                    md_data_old[extra_col] = self.md_data[extra_col]
+                    md_data_old[extra_col] = self.dataframe[extra_col]
 
                 print('Common: ' + np.intersect1d(new_cols, old_cols))
                 common_cols = np.intersect1d(new_cols, old_cols)
 
                 for common_col in common_cols:
-                    md_data_old[common_col] = self.md_data[common_col]
+                    md_data_old[common_col] = self.dataframe[common_col]
 
+                self.dataframe = md_data_old
+                self.dump(filename, backup=True)
+            else:
+                print('No changes')
+                self.dump(filename)
+
+
+    def dump(self, filename, backup=False):
+        if backup:
+            try:
                 shutil.copyfile(
                     f'{self.filename}{filename}.pickle',
                     f'{self.filename}{filename}_{self.timestamp}.pickle')
-                md_data_old.to_pickle(f'{self.filename}{filename}.pickle')
-            else:
-                print('No changes')
-                with open(f'{self.filename}{filename}.pickle', 'wb') as f:
-                    pickle.dump(self.dataframe, f)
+            except FileNotFoundError:
+                pass
+            try:
+                shutil.copyfile(
+                    f'{self.filename}{filename}_md_dataframe.pickle',
+                    f'{self.filename}{filename}_md_dataframe_{self.timestamp}.pickle')
+            except FileNotFoundError:
+                pass
 
+        with open(f'{self.filename}{filename}.pickle', 'wb') as f:
+            pickle.dump(self.dataframe, f)
         with open(f'{self.filename}{filename}_md_dataframe.pickle', 'wb') as f:
             pickle.dump(self, f)
         
@@ -318,26 +379,29 @@ class MDDataFrame(object):
         if not self.computed:
             self.compute()
             
-        for feature in self.analysis_list:
-            if self.dataframe[feature][0].split('_')[-1] == '0.npy':
-                print(f"{feature} already sorted")
-                continue
-            print(f'start to sort {feature}.')
+        if not self.sorted:
+            for feature in self.analysis_list:
+                if self.dataframe[feature][0].split('_')[-1] == '0.npy':
+                    print(f"{feature} already sorted")
+                    continue
+                print(f'start to sort {feature}.')
 
-            raw_data = np.concatenate([np.load(location, allow_pickle=True)
-                            for location, df in self.dataframe.groupby(feature, sort=False)])
-            _ = [os.remove(location) for location, df in self.dataframe.groupby(feature, sort=False)]
-            reordered_feat_loc = []
-            for sys, df in self.dataframe.groupby(['system']):
-                sys_data = raw_data[df.index[0]:df.index[-1]+1]
-                np.save(f"{self.analysis_results.filename}{feature}_{sys}.npy", sys_data)
-                reordered_feat_loc.append([f"{self.analysis_results.filename}{feature}_{sys}.npy"] * len(df))
+                raw_data = np.concatenate([np.load(location, allow_pickle=True)
+                                for location, df in self.dataframe.groupby(feature, sort=False)])
+                _ = [os.remove(location) for location, df in self.dataframe.groupby(feature, sort=False)]
+                reordered_feat_loc = []
+                for sys, df in self.dataframe.groupby(['system']):
+                    sys_data = raw_data[df.index[0]:df.index[-1]+1]
+                    np.save(f"{self.analysis_results.filename}{feature}_{sys}.npy", sys_data)
+                    reordered_feat_loc.append([f"{self.analysis_results.filename}{feature}_{sys}.npy"] * len(df))
 
-            self.dataframe[feature] = np.concatenate(reordered_feat_loc)
-            print(f'{feature} sorted.')
-            del raw_data
-            del sys_data
-            gc.collect()
+                self.dataframe[feature] = np.concatenate(reordered_feat_loc)
+                print(f'{feature} sorted.')
+                del raw_data
+                del sys_data
+                gc.collect()
+
+                self.sorted = True
 
         
     @staticmethod

@@ -106,6 +106,7 @@ class AnalysisResult(dict):
         meta[item_name] = "f8"
 
         # add analysis to dataframe
+        kwargs.update(check_analysis_function.__dict__)
         self[item_name] = self.dd_dataframe.map_partitions(lambda df:
                                                       df.assign(
                                                           **{item_name: analysis_function(**kwargs)(df)}),

@@ -138,6 +138,8 @@ class TrajectoryEnsemble(object):
         # store meta information
         self.trajectory_dt = np.zeros(len(self.trajectory_list))
         self.trajectory_time = np.zeros(len(self.trajectory_list))
+        self.trajectory_frame = np.zeros(len(self.trajectory_list))
+
 
         os.makedirs(self.filename, exist_ok=True)
 
@@ -284,8 +286,12 @@ class TrajectoryEnsemble(object):
 
         if self.only_raw:
             self.trajectory_dt[ind] = u.trajectory.dt
+            self.trajectory_frame[ind] = u.trajectory.n_frames
         else:
             self.trajectory_dt[ind] = u.trajectory.dt * self.skip
+            self.trajectory_frame[ind] = int(u.trajectory.n_frames // self.skip)
+            
+        self.trajectory_time[ind] = u.trajectory.totaltime
 
         # clean-up memory
         del u
