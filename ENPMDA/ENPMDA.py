@@ -272,7 +272,8 @@ class MDDataFrame(object):
                 raw_data =  raw_data.reshape(raw_data.shape[0], -1)
                 feat_info = np.load(self.analysis_results.filename + feature + '_feature_info.npy')
                 raw_data_concat = pd.DataFrame(raw_data, columns=feat_info)
-            return pd.concat([feature_dataframe, raw_data_concat], axis=1)
+                feature_dataframe = pd.concat([feature_dataframe, raw_data_concat], axis=1)
+            return feature_dataframe
         else:
             if not self.sorted:
                 self.sort_analysis_result()
