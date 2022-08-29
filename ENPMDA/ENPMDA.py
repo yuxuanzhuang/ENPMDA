@@ -23,6 +23,8 @@ Classes
 from datetime import datetime
 import warnings
 import numpy as np
+import awkward as ak
+
 import dask.dataframe as dd
 import dask
 import pandas as pd
@@ -393,9 +395,11 @@ class MDDataFrame(object):
                     print(f"{feature} already sorted")
                     continue
                 print(f'start to sort {feature}.')
-
-                raw_data = np.concatenate([np.load(location, allow_pickle=True)
-                                for location, df in self.dataframe.groupby(feature, sort=False)])
+                
+                builder = ak.ArrayBuilder()
+                for location, df in self.dataframe.groupby(feature, sort=False):
+                    builder.append(np.load(location, allow_pickle=True))
+                    
                 _ = [os.remove(location) for location, df in self.dataframe.groupby(feature, sort=False)]
                 reordered_feat_loc = []
                 for sys, df in self.dataframe.groupby(['system']):

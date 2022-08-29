@@ -262,7 +262,6 @@ class TrajectoryEnsemble(object):
                 for chain in u_prot.segments:
                     prot_chain_list.append(chain.atoms)
 
-#                non_prot = u.select_atoms('not protein')
                 prot_group = GroupHug(*prot_chain_list)
                 unwrap = trans.unwrap(u.atoms)
                 center_in_box = trans.center_in_box(u_prot)
@@ -271,6 +270,7 @@ class TrajectoryEnsemble(object):
                     u.select_atoms('name CA'), u.select_atoms('name CA'))
 
                 if self.wrapping:
+                    non_prot = u.select_atoms('not protein')
                     wrap = trans.wrap(non_prot)
                     u.trajectory.add_transformations(
                         *[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
