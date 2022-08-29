@@ -31,6 +31,9 @@ import os
 import pickle
 import shutil
 import gc
+from tqdm import tqdm
+from sklearn import preprocessing
+
 
 from ENPMDA.analysis.base import AnalysisResult
 from ENPMDA.preprocessing import TrajectoryEnsemble
@@ -261,7 +264,10 @@ class MDDataFrame(object):
 
         if isinstance(feature_list, str):
             feature_list = [feature_list]
-
+        for feature in feature_list:
+            if feature not in self.analysis_list:
+                raise ValueError(f'Feature {feature} not in analysis list')
+                
         if in_memory:
             feature_dataframe = self.dataframe[['system', 'traj_name', 'frame', 'traj_time']].copy()
             for feature in feature_list:
@@ -271,7 +277,8 @@ class MDDataFrame(object):
                         sort=False)])
                 raw_data =  raw_data.reshape(raw_data.shape[0], -1)
                 feat_info = np.load(self.analysis_results.filename + feature + '_feature_info.npy')
-                raw_data_concat = pd.DataFrame(raw_data, columns=feat_info)
+                col_names = [feature + '_' + feat for feat in feat_info]
+                raw_data_concat = pd.DataFrame(raw_data, columns=col_names)
                 feature_dataframe = pd.concat([feature_dataframe, raw_data_concat], axis=1)
             return feature_dataframe
         else:
@@ -404,7 +411,31 @@ class MDDataFrame(object):
 
                 self.sorted = True
 
+    def transform_to_logistic(self, feature_name, logistic):
+        raw_data = np.concatenate([np.load(location, allow_pickle=True)
+                        for location, df in self.dataframe.groupby(feature_name, sort=False)])
+                
+        scaler = preprocessing.MinMaxScaler(feature_range=(-logistic, logistic))
         
+        scaled_data = scaler.fit_transform(raw_data)
+        log_data = 1 / (1 + np.exp(-scaled_data))
+
+        feat_locs = []
+        for sys, df in tqdm(self.dataframe.groupby(['system']), total=self.dataframe.system.nunique()):
+            sys_data = log_data[df.index[0]:df.index[-1]+1]
+            np.save(f"{self.analysis_results.filename}{feature_name}_log{logistic}_{sys}.npy", sys_data)
+            feat_locs.append([f"{self.analysis_results.filename}{feature_name}_log{logistic}_{sys}.npy"] * len(df))
+
+        self.dataframe[f"{feature_name}_log{logistic}"] = np.concatenate(feat_locs)
+        self.analysis_list.append(f"{feature_name}_log{logistic}")
+        #TODO rename features
+        shutil.copyfile(f'{self.analysis_results.filename}{feature_name}_feature_info.npy',
+                f'{self.analysis_results.filename}{feature_name}_log{logistic}_feature_info.npy')
+        print('Finish transforming to logistic.')
+        del raw_data
+        del sys_data
+        gc.collect()
+
     @staticmethod
     def load_dataframe(filename):
         """

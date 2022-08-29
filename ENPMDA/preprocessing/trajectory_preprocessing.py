@@ -71,7 +71,8 @@ class TrajectoryEnsemble(object):
                  skip=1,
                  timestamp=timestamp,
                  updating=True,
-                 only_raw=False):
+                 only_raw=False,
+                 wrapping=True):
         r"""
         Parameters
         ----------
@@ -107,6 +108,9 @@ class TrajectoryEnsemble(object):
             Otherwise, on-the-fly transformation will be applied
             to trajectories and processed trajectories
             for protein and system will be returned.
+
+        wrapping: bool, optional
+            If True, all the atoms will be wrapped inside the box.
         """
         if len(topology_list) != len(trajectory_list):
             raise ValueError(
@@ -119,6 +123,7 @@ class TrajectoryEnsemble(object):
         self.timestamp = timestamp
         self.updating = updating
         self.only_raw = only_raw
+        self.wrapping = wrapping
 
         if self.bonded_topology_list is None:
             self.fix_chain = False
@@ -177,28 +182,27 @@ class TrajectoryEnsemble(object):
 
     def _processing_ensemble(self):
         load_job_list = []
-        if not os.path.isfile(self.filename + "raw_traj.pickle"):
-            for ind, (topology, trajectory) in enumerate(
-                    zip(self.topology_list, self.trajectory_list)):
+
+        for ind, (topology, trajectory) in enumerate(
+                zip(self.topology_list, self.trajectory_list)):
+            output_pdb = os.path.dirname(trajectory) + '/skip' + str(self.skip) + '/system.pdb'
+            if not os.path.isfile(output_pdb):
+                print(trajectory + ' new')
                 load_job_list.append(
                     dask.delayed(
                         self._preprocessing_raw_trajectory)(
                         topology, trajectory, ind))
-        else:
-            for ind, (topology, trajectory) in enumerate(
-                    zip(self.topology_list, self.trajectory_list)):
-                if os.path.getmtime(trajectory) > os.path.getmtime(
-                        self.filename + "raw_traj.pickle"):
-                    print(trajectory + ' modified.')
-                    load_job_list.append(
-                        dask.delayed(
-                            self._preprocessing_raw_trajectory)(
-                            topology, trajectory, ind))
-                else:
-                    print(trajectory + ' on hold.')
-                    load_job_list.append(
-                        dask.delayed(
-                            self._load_preprocessing_trajectory)(trajectory))
+            elif os.path.getmtime(trajectory) > os.path.getmtime(output_pdb):
+                print(trajectory + ' modified.')
+                load_job_list.append(
+                    dask.delayed(
+                        self._preprocessing_raw_trajectory)(
+                        topology, trajectory, ind))
+            else:
+                print(trajectory + ' on hold.')
+                load_job_list.append(
+                    dask.delayed(
+                        self._load_preprocessing_trajectory)(trajectory))
 
         self.trajectory_files = dask.compute(load_job_list)[0]
         print('dask finished')
@@ -211,7 +215,7 @@ class TrajectoryEnsemble(object):
         for trajectory in self.trajectory_list:
             traj_path = os.path.dirname(trajectory)
 
-            if os.path.isfile(traj_path + "/protein.xtc"):
+            if os.path.isfile(traj_path + '/skip' + str(self.skip) + "/protein.xtc"):
                 load_job_list.append(
                     dask.delayed(
                         self._load_protein)(trajectory))
@@ -225,7 +229,8 @@ class TrajectoryEnsemble(object):
         load_job_list = []
         for trajectory in self.trajectory_list:
             traj_path = os.path.dirname(trajectory)
-            if os.path.isfile(traj_path + "/system.xtc"):
+            os.makedirs(traj_path + '/skip' + str(self.skip), exist_ok=True)
+            if os.path.isfile(traj_path + '/skip' + str(self.skip) + "/system.xtc"):
                 load_job_list.append(dask.delayed(
                     self._load_system)(trajectory))
         self.system_trajectory_files = dask.compute(load_job_list)[0]
@@ -237,6 +242,7 @@ class TrajectoryEnsemble(object):
     def _preprocessing_raw_trajectory(self, topology, trajectory, ind):
         #    print(trajectory)
         traj_path = os.path.dirname(trajectory)
+        os.makedirs(traj_path + '/skip' + str(self.skip), exist_ok=True)
         # to ignore most unnecessary warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -259,27 +265,30 @@ class TrajectoryEnsemble(object):
 #                non_prot = u.select_atoms('not protein')
                 prot_group = GroupHug(*prot_chain_list)
                 unwrap = trans.unwrap(u.atoms)
-                # wrap = trans.wrap(non_prot)
                 center_in_box = trans.center_in_box(u_prot)
 
                 rot_fit_trans = trans.fit_rot_trans(
                     u.select_atoms('name CA'), u.select_atoms('name CA'))
 
-                u.trajectory.add_transformations(
-                     *[unwrap, prot_group, center_in_box, rot_fit_trans])
-#                    *[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
+                if self.wrapping:
+                    wrap = trans.wrap(non_prot)
+                    u.trajectory.add_transformations(
+                        *[unwrap, prot_group, center_in_box, wrap, rot_fit_trans])
+                else:
+                    u.trajectory.add_transformations(
+                        *[unwrap, prot_group, center_in_box, rot_fit_trans])
 
             if not self.only_raw:
-                with mda.Writer(traj_path + '/protein.xtc',
+                with mda.Writer(traj_path + '/skip' + str(self.skip) + '/protein.xtc',
                                 u_prot.n_atoms) as W_prot, \
-                    mda.Writer(traj_path + '/system.xtc',
+                    mda.Writer(traj_path + '/skip' + str(self.skip) + '/system.xtc',
                                u.atoms.n_atoms) as W_sys:
                     for time, ts in enumerate(u.trajectory[::self.skip]):
                         W_prot.write(u.select_atoms('protein'))
                         W_sys.write(u.atoms)
 
-                u_prot.write(traj_path + '/protein.pdb', bonds=None)
-                u.atoms.write(traj_path + '/system.pdb', bonds=None)
+                u_prot.write(traj_path + '/skip' + str(self.skip) + '/protein.pdb', bonds=None)
+                u.atoms.write(traj_path + '/skip' + str(self.skip) + '/system.pdb', bonds=None)
 
         with open(self.filename + '_'.join(trajectory.split('/')) + '.pickle', 'wb') as f:
             pickle.dump(u, f)
@@ -306,8 +315,8 @@ class TrajectoryEnsemble(object):
 
     def _load_protein(self, trajectory):
         traj_path = os.path.dirname(trajectory)
-        u = mda.Universe(traj_path + '/protein.pdb',
-                         traj_path + '/protein.xtc')
+        u = mda.Universe(traj_path + '/skip' + str(self.skip) + '/protein.pdb',
+                         traj_path + '/skip' + str(self.skip) + '/protein.xtc')
 
         with open(self.filename + '_'.join(trajectory.split('/')) + '_prot.pickle', 'wb') as f:
             pickle.dump(u, f)
@@ -315,8 +324,8 @@ class TrajectoryEnsemble(object):
 
     def _load_system(self, trajectory):
         traj_path = os.path.dirname(trajectory)
-        u = mda.Universe(traj_path + '/system.pdb',
-                         traj_path + '/system.xtc')
+        u = mda.Universe(traj_path + '/skip' + str(self.skip) + '/system.pdb',
+                         traj_path + '/skip' + str(self.skip) + '/system.xtc')
 
         with open(self.filename + '_'.join(trajectory.split('/')) + '_sys.pickle', 'wb') as f:
             pickle.dump(u, f)
@@ -327,4 +336,4 @@ class TrajectoryEnsemble(object):
         """
         The saving location of all the pickled files.
         """
-        return os.path.abspath(self.working_dir + self.ensemble_name) + '/'
+        return os.path.abspath(self.working_dir + self.ensemble_name) + '/skip' + str(self.skip) + '/'
