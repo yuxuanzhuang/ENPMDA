@@ -396,9 +396,11 @@ class MDDataFrame(object):
                     continue
                 print(f'start to sort {feature}.')
                 
-                builder = ak.ArrayBuilder()
-                for location, df in self.dataframe.groupby(feature, sort=False):
-                    builder.append(np.load(location, allow_pickle=True))
+#                builder = ak.ArrayBuilder()
+#                for location, df in self.dataframe.groupby(feature, sort=False):
+#                    builder.append(np.load(location, allow_pickle=True))
+                raw_data = np.concatenate([np.load(location, allow_pickle=True)
+                            for location, df in self.dataframe.groupby(feature, sort=False)])
                     
                 _ = [os.remove(location) for location, df in self.dataframe.groupby(feature, sort=False)]
                 reordered_feat_loc = []
