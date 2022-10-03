@@ -442,6 +442,29 @@ class MDDataFrame(object):
         del sys_data
         gc.collect()
 
+    def transform_to_reciprocal(self, feature_name):
+        raw_data = np.concatenate([np.load(location, allow_pickle=True)
+                        for location, df in self.dataframe.groupby(feature_name, sort=False)])
+                        
+        _ = np.reciprocal(raw_data.astype(np.float64), out=raw_data, where=raw_data!=0)
+
+        feat_locs = []
+        for sys, df in tqdm(self.dataframe.groupby(['system']), total=self.dataframe.system.nunique()):
+            sys_data = raw_data[df.index[0]:df.index[-1]+1]
+            np.save(f"{self.analysis_results.filename}{feature_name}_reciprocal_{sys}.npy", sys_data)
+            feat_locs.append([f"{self.analysis_results.filename}{feature_name}_reciprocal_{sys}.npy"] * len(df))
+
+        self.dataframe[f"{feature_name}_reciprocal"] = np.concatenate(feat_locs)
+        self.analysis_list.append(f"{feature_name}_reciprocal")
+
+        #TODO rename features
+        shutil.copyfile(f'{self.analysis_results.filename}{feature_name}_feature_info.npy',
+                f'{self.analysis_results.filename}{feature_name}_reciprocal_feature_info.npy')
+        print('Finish transforming to reciprocal.')
+        del raw_data
+        del sys_data
+        gc.collect()
+
     @staticmethod
     def load_dataframe(filename):
         """
