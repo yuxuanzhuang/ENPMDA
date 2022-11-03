@@ -213,6 +213,7 @@ class MDDataFrame(object):
             Keyword arguments to be passed to the analysis.
         """
         self.computed = False
+        self.sorted = False
         if analysis.name in self.analysis_list and not overwrite:
             warnings.warn(f'Analysis {analysis.name} already added, add overwrite=True to overwrite',
                           stacklevel=2)
@@ -222,6 +223,7 @@ class MDDataFrame(object):
             self.analysis_list.remove(analysis.name)
             self.analysis_list.append(analysis.name)
             self.analysis_results.add_column_to_results(analysis, **kwargs)
+
             print(f'Analysis {analysis.name} overwritten')
         else:
             self.analysis_list.append(analysis.name)
@@ -252,7 +254,8 @@ class MDDataFrame(object):
         feat_info = np.load(self.analysis_results.filename + feature_name + '_feature_info.npy')
         return feat_info
 
-    def get_feature(self, feature_list, in_memory=True):
+    def get_feature(self, feature_list, extra_metadata=[],
+                    in_memory=True):
         """
         Get the features from the dataframe.
 
@@ -260,7 +263,13 @@ class MDDataFrame(object):
         ----------
         feature_list: list of str
             The list of features to be extracted.
+        extra_metadata: list of str, optional
+            The list of extra metadata to be extracted.
+        in_memory: bool, optional
+            Whether to load the features in memory.
         """
+
+        meta_data = ['system', 'traj_name', 'frame', 'traj_time'] + extra_metadata
         if not self.computed:
             self.compute()
 
@@ -271,7 +280,7 @@ class MDDataFrame(object):
                 raise ValueError(f'Feature {feature} not in analysis list')
                 
         if in_memory:
-            feature_dataframe = self.dataframe[['system', 'traj_name', 'frame', 'traj_time']].copy()
+            feature_dataframe = self.dataframe[meta_data].copy()
             for feature in feature_list:
                 raw_data = np.concatenate([np.load(location,
                                             allow_pickle=True)
@@ -286,7 +295,7 @@ class MDDataFrame(object):
         else:
             if not self.sorted:
                 self.sort_analysis_result()
-            feature_dataframe = pd.DataFrame(columns=['system', 'traj_name', 'n_frame', 'total_time'] + feature_list)
+            feature_dataframe = pd.DataFrame(columns=meta_data + feature_list)
             
             for ind, (system, df) in enumerate(self.dataframe.groupby('system',
                     sort=False)):
@@ -301,14 +310,14 @@ class MDDataFrame(object):
             return feature_dataframe
 
 
-    def save(self, filename='dataframe', overwrite=False):
+    def save(self, name='dataframe', overwrite=False):
         """
         Compute the analysis results and
         save the dataframe to a pickle file.
         
         Parameters
         ----------
-        filename: str, optional
+        name: str, optional
             The name of the pickle file.
             It will be saved in the working directory.
         overwrite: bool, optional
@@ -318,20 +327,22 @@ class MDDataFrame(object):
         if not self.computed:
             self.compute()
 
+        self.save_name = name
+
         if overwrite:
-            self.dump(filename)
+            self.dump(name)
             return
 
-        if not os.path.exists(f'{self.filename}{filename}.pickle'):
-            self.dump(filename)
+        if not os.path.exists(f'{self.filename}{name}.pickle'):
+            self.dump(name)
         else:
             md_dataframe_old = pickle.load(
-                open(f'{self.filename}{filename}_md_dataframe.pickle', 'rb'))
+                open(f'{self.filename}{name}_md_dataframe.pickle', 'rb'))
             md_data_old = md_dataframe_old.dataframe
 
             if set(md_data_old.universe_protein) != set(self.dataframe.universe_protein):
                 print('Seeds changed')
-                self.dump(filename)
+                self.dump(name)
 
             elif set(md_data_old.columns) != set(self.dataframe.columns):
                 print('# features changed')
@@ -359,10 +370,10 @@ class MDDataFrame(object):
                     md_data_old[common_col] = self.dataframe[common_col]
 
                 self.dataframe = md_data_old
-                self.dump(filename, backup=True)
+                self.dump(name, backup=True)
             else:
                 print('No changes')
-                self.dump(filename)
+                self.dump(name)
 
 
     def dump(self, filename, backup=False):
@@ -399,10 +410,11 @@ class MDDataFrame(object):
 #                builder = ak.ArrayBuilder()
 #                for location, df in self.dataframe.groupby(feature, sort=False):
 #                    builder.append(np.load(location, allow_pickle=True))
+
+                old_locations = [location for location, df in self.dataframe.groupby(feature, sort=False)]
                 raw_data = np.concatenate([np.load(location, allow_pickle=True)
-                            for location, df in self.dataframe.groupby(feature, sort=False)])
+                            for location in old_locations])
                     
-                _ = [os.remove(location) for location, df in self.dataframe.groupby(feature, sort=False)]
                 reordered_feat_loc = []
                 for sys, df in self.dataframe.groupby(['system']):
                     sys_data = raw_data[df.index[0]:df.index[-1]+1]
@@ -412,10 +424,15 @@ class MDDataFrame(object):
                 self.dataframe[feature] = np.concatenate(reordered_feat_loc)
                 print(f'{feature} sorted.')
                 del raw_data
-                del sys_data
                 gc.collect()
+                _ = [os.remove(location) for location in old_locations]
 
-                self.sorted = True
+            self.sorted = True
+
+            if hasattr(self, 'save_name'):
+                self.save(self.save_name, overwrite=True)
+        else:
+            print('Already sorted')
 
     def transform_to_logistic(self, feature_name, logistic):
         raw_data = np.concatenate([np.load(location, allow_pickle=True)
@@ -439,8 +456,10 @@ class MDDataFrame(object):
                 f'{self.analysis_results.filename}{feature_name}_log{logistic}_feature_info.npy')
         print('Finish transforming to logistic.')
         del raw_data
-        del sys_data
         gc.collect()
+
+        if hasattr(self, 'save_name'):
+            self.save(self.save_name, overwrite=True)
 
     def transform_to_reciprocal(self, feature_name):
         raw_data = np.concatenate([np.load(location, allow_pickle=True)
@@ -462,8 +481,10 @@ class MDDataFrame(object):
                 f'{self.analysis_results.filename}{feature_name}_reciprocal_feature_info.npy')
         print('Finish transforming to reciprocal.')
         del raw_data
-        del sys_data
         gc.collect()
+
+        if hasattr(self, 'save_name'):
+            self.save(self.save_name, overwrite=True)
 
     @staticmethod
     def load_dataframe(filename):
