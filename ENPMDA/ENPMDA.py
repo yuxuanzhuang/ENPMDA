@@ -160,7 +160,7 @@ class MDDataFrame(object):
         self.dataframe.frame = self.dataframe.frame.apply(int)
         self.dataframe.traj_time = self.dataframe.traj_time.apply(float)
 
-        self._init_analysis_results(npartitions=self.npartitions)
+        self._init_dd_dataframe()
 
     def _append_metadata(self, universe, system):
         universe_system = self.system_trajectory_files[system]
@@ -187,10 +187,13 @@ class MDDataFrame(object):
         del u
         return rep_data
 
-    def _init_analysis_results(self, npartitions):
+    def _init_dd_dataframe(self):
         self.dd_dataframe = dd.from_pandas(self.dataframe,
-                                           npartitions=npartitions)
-        print('Dask dataframe generated with {} partitions'.format(npartitions))
+                                           npartitions=self.npartitions)
+        print('Requested number of partitions: ', self.npartitions)
+        if self.dd_dataframe.npartitions != self.npartitions:
+            print('Actual {} partitions'.format(self.dd_dataframe.npartitions))
+            self.npartitions = self.dd_dataframe.npartitions
         self.analysis_results = AnalysisResult(self.dd_dataframe,
                                                self.dataframe,
                                                working_dir=self.filename,
@@ -241,6 +244,10 @@ class MDDataFrame(object):
         self.analysis_results.append_to_dataframe(self.dataframe)
         self.computed = True
 
+        # reinstantiate the dask dataframe
+        self._init_dd_dataframe()
+
+
 
     def get_feature_info(self, feature_name):
         """
@@ -286,10 +293,17 @@ class MDDataFrame(object):
                                             allow_pickle=True)
                         for location, df in self.dataframe.groupby(feature,
                         sort=False)])
-                raw_data =  raw_data.reshape(raw_data.shape[0], -1)
                 feat_info = np.load(self.analysis_results.filename + feature + '_feature_info.npy')
                 col_names = [feature + '_' + feat for feat in feat_info]
-                raw_data_concat = pd.DataFrame(raw_data, columns=col_names)
+
+                if raw_data.ndim == 1 and len(feat_info) != 1:
+                    raw_data_con = []
+                    for raw_data_single in raw_data:
+                        raw_data_con.append(list(raw_data_single))
+                    raw_data_concat = pd.DataFrame(raw_data_con, columns=col_names)
+                else:
+                    raw_data = raw_data.reshape(raw_data.shape[0], -1)
+                    raw_data_concat = pd.DataFrame(raw_data, columns=col_names)
                 feature_dataframe = pd.concat([feature_dataframe, raw_data_concat], axis=1)
             return feature_dataframe
         else:
@@ -413,7 +427,7 @@ class MDDataFrame(object):
 
                 old_locations = [location for location, df in self.dataframe.groupby(feature, sort=False)]
                 raw_data = np.concatenate([np.load(location, allow_pickle=True)
-                            for location in old_locations])
+                            for location in old_locations], axis=0)
                     
                 reordered_feat_loc = []
                 for sys, df in self.dataframe.groupby(['system']):
@@ -429,15 +443,47 @@ class MDDataFrame(object):
 
             self.sorted = True
 
+            # update the analysis results
+            self._init_dd_dataframe()
+
             if hasattr(self, 'save_name'):
+                print(f'Saving sorted results to {self.save_name}')
                 self.save(self.save_name, overwrite=True)
         else:
             print('Already sorted')
 
+    def add_analysis_result_from_data(self, data, feature_name, feature_info):
+
+        if data.shape[0] != self.dataframe.shape[0]:
+            print(f'Data shape {data.shape[0]} does not match the dataframe shape {self.dataframe.shape[0]}.')
+            return
+
+        if feature_name in self.analysis_list:
+            print(f'{feature_name} already exists.')
+            return
+
+        feat_locs = []
+        for sys, df in tqdm(self.dataframe.groupby(['system']), total=self.dataframe.system.nunique()):
+            sys_data = data[df.index[0]:df.index[-1]+1]
+            np.save(f"{self.analysis_results.filename}{feature_name}_{sys}.npy", sys_data)
+            feat_locs.append([f"{self.analysis_results.filename}{feature_name}_{sys}.npy"] * len(df))
+
+        self.dataframe[f"{feature_name}"] = np.concatenate(feat_locs)
+        self.analysis_list.append(f"{feature_name}")
+
+        np.save(f'{self.analysis_results.filename}{feature_name}_feature_info.npy',
+                feature_info)
+
+        if hasattr(self, 'save_name'):
+            self.save(self.save_name, overwrite=True)
+
     def transform_to_logistic(self, feature_name, logistic):
         raw_data = np.concatenate([np.load(location, allow_pickle=True)
                         for location, df in self.dataframe.groupby(feature_name, sort=False)])
-                
+        
+#        if raw_data.shape[1] == 1:
+#            raw_data = np.hstack(raw_data).T
+
         scaler = preprocessing.MinMaxScaler(feature_range=(-logistic, logistic))
         
         scaled_data = scaler.fit_transform(raw_data)
@@ -464,7 +510,10 @@ class MDDataFrame(object):
     def transform_to_reciprocal(self, feature_name):
         raw_data = np.concatenate([np.load(location, allow_pickle=True)
                         for location, df in self.dataframe.groupby(feature_name, sort=False)])
-                        
+
+#        if raw_data.shape[1] == 1:
+#            raw_data = np.hstack(raw_data).T
+
         _ = np.reciprocal(raw_data.astype(np.float64), out=raw_data, where=raw_data!=0)
 
         feat_locs = []

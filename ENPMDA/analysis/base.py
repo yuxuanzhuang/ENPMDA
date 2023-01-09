@@ -45,6 +45,7 @@ import numpy as np
 import uuid
 import pickle
 import itertools
+import warnings
 
 
 class AnalysisResult(dict):
@@ -90,16 +91,25 @@ class AnalysisResult(dict):
         
         feature_info = check_analysis_function.set_feature_info(universe)
         check_result = np.asarray(check_analysis_function.run_analysis(universe, 0, 2, 1))
-        check_result = check_result.reshape(check_result.shape[0], -1)
-        if check_result.shape[1] != len(feature_info):
-            raise ValueError(f'The shape of feature info ({len(feature_info)}) '
-            f'does not match the shape of analysis ({check_result.shape[1]}).')
+
+        if check_result.ndim > 2:
+            warnings.warn(f'The result of the analysis function is not 2D.'
+            f'Make sure the shape of feature info ({len(feature_info)}) '
+            f'does match the shape of analysis ({check_result.shape[1]}).',
+            stacklevel=2)
+            check_result = check_result.reshape(check_result.shape[0], len(feature_info), -1)
+        else:  
+            check_result = check_result.reshape(check_result.shape[0], -1)
+            if check_result.shape[1] != len(feature_info):
+                raise ValueError(f'The shape of feature info ({len(feature_info)}) '
+                f'does not match the shape of analysis ({check_result.shape[1]}).')
         if check_result.shape[0] != 2:
             raise ValueError('The len of the result'
             'does not match the number of the frame.'
             'Hint: run_analysis should return a list'
             'with the shape as the trajectory frames.')
         np.save(check_analysis_function.feature_info_loc, feature_info)
+        check_analysis_function._feature_info = feature_info
 
         item_name = analysis_function.name
         meta = dict(self.dd_dataframe.dtypes)
@@ -132,13 +142,14 @@ class DaskChunkMdanalysis(object):
     """
     name = 'analysis'
     universe_file = 'protein'
+    output='array'
 
     def __init__(self, **kwargs):
+        self._feature_info = []
         self.__dict__.update(kwargs)
 
         # get unique uuid for each partition
         self._partition = uuid.uuid4().hex
-        self.feature_info = []
 
     def __call__(self, df):
         return self.run_df(df)
@@ -166,11 +177,22 @@ class DaskChunkMdanalysis(object):
             del universe
 
         result_ordered = list(itertools.chain.from_iterable(result))
+
+        # make sure the result is 2D with the shape of the trajectory frames and
+        # the number of features
+
+        if self.output == 'array':
+            result_ordered_arr = np.asarray(result_ordered)
+        else:
+            result_ordered_arr = np.empty(len(result_ordered), dtype=object)
+            result_ordered_arr[...] = [np.asarray(x).reshape(len(self.feature_info), -1) for x in result_ordered]
+#        result_ordered = result_ordered.reshape(result_ordered.shape[0], len(self.feature_info), -1)
+
         
         # store results and only return the location of the files
-        np.save(self.location, result_ordered)
-        n_result = len(result_ordered)
-        del result_ordered
+        np.save(self.location, result_ordered_arr)
+        n_result = len(result_ordered_arr)
+        del result_ordered_arr
         
         return n_result * [self.location]
 
@@ -205,3 +227,7 @@ class DaskChunkMdanalysis(object):
     @property
     def feature_info_loc(self):
         return self.filename + self.name + '_feature_info.npy'
+
+    @property
+    def feature_info(self):
+        return self._feature_info
