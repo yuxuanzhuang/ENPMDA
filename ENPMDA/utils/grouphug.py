@@ -7,8 +7,7 @@ import numpy as np
 
 class GroupHug(TransformationBase):
     def __init__(self, center, *others):
-        super().__init__(max_threads=1,
-                         parallelizable=True)
+        super().__init__(max_threads=1, parallelizable=True)
         self.c = center
         self.o = others
 
