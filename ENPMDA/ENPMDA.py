@@ -93,10 +93,12 @@ class MDDataFrame(object):
         )
         self.computed = False
         self.sorted = False
+
+        # set working dir to absolute directory
         if not os.path.isabs(self.dataframe_name):
             self.working_dir = os.getcwd() + '/'
         else:
-            self.working_dir = ''
+            self.working_dir = os.path.relpath(self.dataframe, os.getcwd())
         self.timestamp = timestamp
         self.trajectory_ensemble = None
         self.analysis_list = []
@@ -288,7 +290,7 @@ class MDDataFrame(object):
                 
         if in_memory:
             feature_dataframe = self.dataframe[meta_data].copy()
-            for feature in feature_list:
+            for feature in tqdm(feature_list, desc='Loading features'):
                 raw_data = np.concatenate([np.load(location,
                                             allow_pickle=True)
                         for location, df in self.dataframe.groupby(feature,
@@ -305,14 +307,14 @@ class MDDataFrame(object):
                     raw_data = raw_data.reshape(raw_data.shape[0], -1)
                     raw_data_concat = pd.DataFrame(raw_data, columns=col_names)
                 feature_dataframe = pd.concat([feature_dataframe, raw_data_concat], axis=1)
-            return feature_dataframe
+            return feature_dataframe.reset_index(drop=True)
         else:
             if not self.sorted:
                 self.sort_analysis_result()
             feature_dataframe = pd.DataFrame(columns=meta_data + feature_list)
             
-            for ind, (system, df) in enumerate(self.dataframe.groupby('system',
-                    sort=False)):
+            for ind, (system, df) in tqdm(enumerate(self.dataframe.groupby('system',
+                    sort=False)), desc='Loading features', total=len(self.dataframe.system.unique())):
                 feature_dataframe = pd.concat([feature_dataframe,
                 pd.DataFrame([[
                 system,
@@ -321,7 +323,7 @@ class MDDataFrame(object):
                 df.traj_time.values[-1]] + [df[feat].values[-1] for feat in feature_list]],
                 columns=feature_dataframe.columns)])
 
-            return feature_dataframe
+            return feature_dataframe.reset_index(drop=True)
 
 
     def save(self, name='dataframe', overwrite=False):
@@ -356,6 +358,10 @@ class MDDataFrame(object):
 
             if set(md_data_old.universe_protein) != set(self.dataframe.universe_protein):
                 print('Seeds changed')
+                self.dump(name)
+            
+            if md_data_old.shape[0] != self.dataframe.shape[0]:
+                print('Trajectory length changed')
                 self.dump(name)
 
             elif set(md_data_old.columns) != set(self.dataframe.columns):
@@ -507,6 +513,31 @@ class MDDataFrame(object):
         if hasattr(self, 'save_name'):
             self.save(self.save_name, overwrite=True)
 
+    def transform_to_logistic_with_minmax(self, feature_name, logistic, min_arr, max_arr):
+        raw_data = np.concatenate([np.load(location, allow_pickle=True)
+                        for location, df in self.dataframe.groupby(feature_name, sort=False)])
+        scaled_data = (raw_data - min_arr) / (max_arr - min_arr)
+        scaled_data = scaled_data * (2 * logistic) - logistic
+        log_data = 1 / (1 + np.exp(-scaled_data))
+
+        feat_locs = []
+        for sys, df in tqdm(self.dataframe.groupby(['system']), total=self.dataframe.system.nunique()):
+            sys_data = log_data[df.index[0]:df.index[-1]+1]
+            np.save(f"{self.analysis_results.filename}{feature_name}_logminmax{logistic}_{sys}.npy", sys_data)
+            feat_locs.append([f"{self.analysis_results.filename}{feature_name}_logminmax{logistic}_{sys}.npy"] * len(df))
+
+        self.dataframe[f"{feature_name}_logminmax{logistic}"] = np.concatenate(feat_locs)
+        self.analysis_list.append(f"{feature_name}_logminmax{logistic}")
+        #TODO rename features
+        shutil.copyfile(f'{self.analysis_results.filename}{feature_name}_feature_info.npy',
+                f'{self.analysis_results.filename}{feature_name}_logminmax{logistic}_feature_info.npy')
+        print('Finish transforming to logistic.')
+        del raw_data
+        gc.collect()
+
+        if hasattr(self, 'save_name'):
+            self.save(self.save_name, overwrite=True)
+
     def transform_to_reciprocal(self, feature_name):
         raw_data = np.concatenate([np.load(location, allow_pickle=True)
                         for location, df in self.dataframe.groupby(feature_name, sort=False)])
@@ -535,8 +566,8 @@ class MDDataFrame(object):
         if hasattr(self, 'save_name'):
             self.save(self.save_name, overwrite=True)
 
-    @staticmethod
-    def load_dataframe(filename):
+    @classmethod
+    def load_dataframe(cls, filename) -> 'MDDataFrame':
         """
         Load the dataframe from a pickle file.
 
@@ -547,6 +578,7 @@ class MDDataFrame(object):
         """
         with open(f'{filename}.pickle', 'rb') as f:
             md_data = pickle.load(f)
+
         return md_data
 
     @property

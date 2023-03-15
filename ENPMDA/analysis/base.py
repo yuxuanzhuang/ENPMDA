@@ -46,6 +46,7 @@ import uuid
 import pickle
 import itertools
 import warnings
+import dask.dataframe as dd
 
 
 class AnalysisResult(dict):
@@ -71,27 +72,28 @@ class AnalysisResult(dict):
     def compute(self, item=None):
         if item is None:
             for item, df in self.items():
-                if isinstance(df, dask.dataframe.core.DataFrame):
+                if isinstance(df, dd.core.DataFrame):
                     self[item] = df.compute()[['system', item]]
         elif item in self.keys():
-            if isinstance(df, dask.dataframe.core.DataFrame):
+            if isinstance(df, dd.core.DataFrame):
                 self[item] = df.compute()[['system', item]]
         else:
             raise ValueError(item + ' not in dict')
 
     def add_column_to_results(self, analysis_function, **kwargs):
-        kwargs['filename'] = self.filename
 
         # sanity check and get feature info
-        check_analysis_function = analysis_function(**kwargs)
+        check_analysis_function = analysis_function(filename=self.filename, **kwargs)
         if check_analysis_function.universe_file == 'protein':
             universe = pickle.load(open(self.dataframe.iloc[0].universe_protein, "rb"))
         else:
             universe = pickle.load(open(self.dataframe.iloc[0].universe_system, "rb"))
         
         feature_info = check_analysis_function.set_feature_info(universe)
-        check_result = np.asarray(check_analysis_function.run_analysis(universe, 0, 2, 1))
-
+        if check_analysis_function.output == 'array':
+            check_result = np.asarray(check_analysis_function.run_analysis(universe, 0, 2, 1))
+        else:
+            check_result = np.asarray(check_analysis_function.run_analysis(universe, 0, 2, 1), dtype=object)
         if check_result.ndim > 2:
             warnings.warn(f'The result of the analysis function is not 2D.'
             f'Make sure the shape of feature info ({len(feature_info)}) '
@@ -144,8 +146,9 @@ class DaskChunkMdanalysis(object):
     universe_file = 'protein'
     output='array'
 
-    def __init__(self, **kwargs):
+    def __init__(self, filename, **kwargs):
         self._feature_info = []
+        self.filename = filename
         self.__dict__.update(kwargs)
 
         # get unique uuid for each partition
@@ -185,7 +188,7 @@ class DaskChunkMdanalysis(object):
             result_ordered_arr = np.asarray(result_ordered)
         else:
             result_ordered_arr = np.empty(len(result_ordered), dtype=object)
-            result_ordered_arr[...] = [np.asarray(x).reshape(len(self.feature_info), -1) for x in result_ordered]
+            result_ordered_arr[...] = [np.asarray(x, dtype=object).reshape(len(self.feature_info), -1) for x in result_ordered]
 #        result_ordered = result_ordered.reshape(result_ordered.shape[0], len(self.feature_info), -1)
 
         
@@ -212,9 +215,6 @@ class DaskChunkMdanalysis(object):
         """
         raise NotImplementedError('Only for inheritance.')
 
-    @property
-    def name(self):
-        return self._name
 
     @property
     def partition(self):

@@ -41,6 +41,8 @@ import MDAnalysis as mda
 import MDAnalysis.transformations as trans
 import dask
 import numpy as np
+from typing import Optional
+
 
 from ENPMDA.utils import GroupHug
 
@@ -64,15 +66,15 @@ class TrajectoryEnsemble(object):
     in the same folder as the loading trajectory.
     """
     def __init__(self,
-                 ensemble_name,
-                 topology_list,
-                 trajectory_list,
-                 bonded_topology_list=None,
-                 skip=1,
-                 timestamp=timestamp,
-                 updating=True,
-                 only_raw=False,
-                 wrapping=True):
+                 ensemble_name: str,
+                 topology_list: list,
+                 trajectory_list: list,
+                 bonded_topology_list: Optional[str] = None,
+                 skip: int = 1,
+                 timestamp: str = timestamp,
+                 updating: bool =True,
+                 only_raw: bool =False,
+                 wrapping: bool =True):
         r"""
         Parameters
         ----------
