@@ -1,5 +1,5 @@
 mdanalysis
-dask[complete]
+dask==2021.4.1
 distributed
 tqdm
 numpy
