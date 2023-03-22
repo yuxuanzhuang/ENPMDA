@@ -1,6 +1,5 @@
-mdanalysis
 dask==2021.4.1
-distributed
+distributed==2021.4.1
 tqdm
 numpy
 pandas

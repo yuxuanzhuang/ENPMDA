@@ -23,7 +23,7 @@ Classes
 from datetime import datetime
 import warnings
 import numpy as np
-import awkward as ak
+#import awkward as ak
 
 import dask.dataframe as dd
 import dask
