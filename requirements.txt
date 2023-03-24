@@ -1,5 +1,5 @@
 dask==2021.4.1
-distributed==2021.4.1
+distributed==2021.10.0
 bokeh
 tqdm
 numpy
