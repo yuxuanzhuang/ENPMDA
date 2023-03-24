@@ -1,5 +1,6 @@
 dask==2021.4.1
 distributed==2021.4.1
+bokeh
 tqdm
 numpy
 pandas

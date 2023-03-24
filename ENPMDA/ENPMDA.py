@@ -22,6 +22,8 @@ Classes
 
 from datetime import datetime
 import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 import numpy as np
 #import awkward as ak
 
@@ -679,9 +681,14 @@ class MDDataFrame(object):
         filename: str, optional
             The name of the pickle file.
         """
-        with open(f"{filename}.pickle", "rb") as f:
-            md_data = pickle.load(f)
-
+        if os.path.isfile(f"{filename}.pickle"):
+            print(f"Loading {filename}.pickle")
+            with open(f"{filename}.pickle", "rb") as f:
+                md_data = pickle.load(f)
+        else:
+            print(f"Loading {filename}/{filename}_md_dataframe.pickle")
+            with open(f"{filename}/{filename}_md_dataframe.pickle", "rb") as f:
+                md_data = pickle.load(f)
         return md_data
 
     @property

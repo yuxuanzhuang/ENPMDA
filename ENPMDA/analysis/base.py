@@ -222,6 +222,16 @@ class DaskChunkMdanalysis(object):
         """
         raise NotImplementedError("Only for inheritance.")
 
+    @classmethod
+    def test_on_universe(cls, universe, start=0, stop=2, step=1):
+        """
+        This function is used to test the analysis function on a universe.
+        """
+        return cls(filename='test').run_analysis(universe,
+                                                 start,
+                                                 stop,
+                                                 step)
+
     @property
     def partition(self):
         return str(self._partition)

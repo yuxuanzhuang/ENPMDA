@@ -71,7 +71,8 @@ class TrajectoryEnsemble(object):
         ensemble_name: str,
         topology_list: list,
         trajectory_list: list,
-        bonded_topology_list: Optional[str] = None,
+        # bonded_topology_list is an optional list of str
+        bonded_topology_list: Optional[list] = None,
         skip: int = 1,
         timestamp: str = timestamp,
         updating: bool = True,
