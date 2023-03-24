@@ -4,4 +4,5 @@ bokeh
 tqdm
 numpy
 pandas
+scikit-learn
 mdanalysis @ git+https://github.com/yuxuanzhuang/mdanalysis#egg=with_fasttrans&subdirectory=package
