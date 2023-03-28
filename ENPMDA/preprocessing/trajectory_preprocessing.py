@@ -78,6 +78,7 @@ class TrajectoryEnsemble(object):
         updating: bool = True,
         only_raw: bool = False,
         wrapping: bool = True,
+        protein_selection: str = "protein",
     ):
         r"""
         Parameters
@@ -117,6 +118,10 @@ class TrajectoryEnsemble(object):
 
         wrapping: bool, optional
             If True, all the atoms will be wrapped inside the box.
+
+        protein_selection: str, optional
+            The selection string for `protein.pdb`. Default is "protein".
+            Can also be any selection string supported by MDAnalysis.
         """
         if len(topology_list) != len(trajectory_list):
             raise ValueError(
@@ -131,6 +136,7 @@ class TrajectoryEnsemble(object):
         self.updating = updating
         self.only_raw = only_raw
         self.wrapping = wrapping
+        self.protein_selection = protein_selection
 
         if self.bonded_topology_list is None:
             self.fix_chain = False
@@ -200,14 +206,14 @@ class TrajectoryEnsemble(object):
                 print(trajectory + " new")
                 load_job_list.append(
                     dask.delayed(self._preprocessing_raw_trajectory)(
-                        topology, trajectory, ind
+                        topology, trajectory, ind, self.protein_selection
                     )
                 )
             elif os.path.getmtime(trajectory) > os.path.getmtime(output_pdb):
                 print(trajectory + " modified.")
                 load_job_list.append(
                     dask.delayed(self._preprocessing_raw_trajectory)(
-                        topology, trajectory, ind
+                        topology, trajectory, ind, self.protein_selection
                     )
                 )
             else:
@@ -248,7 +254,8 @@ class TrajectoryEnsemble(object):
             pickle.dump(self.system_trajectory_files, f)
             print("pickle traj system universe done")
 
-    def _preprocessing_raw_trajectory(self, topology, trajectory, ind):
+    def _preprocessing_raw_trajectory(self, topology, trajectory, ind,
+                                      protein_selection="protein"):
         #    print(trajectory)
         traj_path = os.path.dirname(trajectory)
         os.makedirs(traj_path + "/skip" + str(self.skip), exist_ok=True)
@@ -257,7 +264,7 @@ class TrajectoryEnsemble(object):
             warnings.simplefilter("ignore")
             u = mda.Universe(topology, trajectory)
 
-            u_prot = u.select_atoms("protein")
+            u_prot = u.select_atoms(protein_selection)
 
             # only work in the presence of bonded information
             if self.fix_chain:
@@ -279,7 +286,7 @@ class TrajectoryEnsemble(object):
                 )
 
                 if self.wrapping:
-                    non_prot = u.select_atoms("not protein")
+                    non_prot = u.select_atoms(f"not {protein_selection}")
                     wrap = trans.wrap(non_prot)
                     u.trajectory.add_transformations(
                         *[unwrap, prot_group, center_in_box, wrap, rot_fit_trans]
@@ -298,7 +305,7 @@ class TrajectoryEnsemble(object):
                     u.atoms.n_atoms,
                 ) as W_sys:
                     for time, ts in enumerate(u.trajectory[:: self.skip]):
-                        W_prot.write(u.select_atoms("protein"))
+                        W_prot.write(u.select_atoms(protein_selection))
                         W_sys.write(u.atoms)
 
                 u_prot.write(
