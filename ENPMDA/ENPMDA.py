@@ -233,14 +233,14 @@ class MDDataFrame(object):
             )
         elif analysis.name in self.analysis_list and overwrite:
             warnings.warn(f"Analysis {analysis.name} overwrites!", stacklevel=2)
+            self.analysis_results.add_column_to_results(analysis, **kwargs)
             self.analysis_list.remove(analysis.name)
             self.analysis_list.append(analysis.name)
-            self.analysis_results.add_column_to_results(analysis, **kwargs)
-
             print(f"Analysis {analysis.name} overwritten")
         else:
-            self.analysis_list.append(analysis.name)
             self.analysis_results.add_column_to_results(analysis, **kwargs)
+            self.analysis_list.append(analysis.name)
+
             print(f"Analysis {analysis.name} added")
 
     def compute(self):
@@ -271,7 +271,8 @@ class MDDataFrame(object):
         )
         return feat_info
 
-    def get_feature(self, feature_list, extra_metadata=[], in_memory=True):
+    def get_feature(self, feature_list, extra_metadata=[], in_memory=True,
+                    working_dir=None):
         """
         Get the features from the dataframe.
 
@@ -284,6 +285,7 @@ class MDDataFrame(object):
         in_memory: bool, optional
             Whether to load the features in memory.
         """
+        working_dir = self.working_dir if working_dir is None else working_dir
 
         meta_data = ["system", "traj_name", "frame", "traj_time"] + extra_metadata
         if not self.computed:
@@ -297,15 +299,20 @@ class MDDataFrame(object):
 
         if in_memory:
             feature_dataframe = self.dataframe[meta_data].copy()
-            for feature in tqdm(feature_list, desc="Loading features"):
+            for feature in feature_list:
                 raw_data = np.concatenate(
                     [
-                        np.load(location, allow_pickle=True)
-                        for location, df in self.dataframe.groupby(feature, sort=False)
+                        np.load(location.replace(self.working_dir,
+                                                 working_dir), allow_pickle=True)
+                        for location, df in tqdm(self.dataframe.groupby(feature,
+                                                                        sort=False),
+                                                    desc="Loading feature {}".format(feature),
+                                                    total=self.dataframe[feature].nunique())
                     ]
                 )
                 feat_info = np.load(
-                    self.analysis_results.filename + feature + "_feature_info.npy"
+                    self.analysis_results.filename.replace(self.working_dir, working_dir) + feature + "_feature_info.npy",
+                    allow_pickle=True
                 )
                 col_names = [feature + "_" + feat for feat in feat_info]
 
@@ -681,7 +688,11 @@ class MDDataFrame(object):
         filename: str, optional
             The name of the pickle file.
         """
-        if os.path.isfile(f"{filename}.pickle"):
+        if os.path.isfile(filename):
+            print(f"Loading {filename}")
+            with open(filename, "rb") as f:
+                md_data = pickle.load(f)
+        elif os.path.isfile(f"{filename}.pickle"):
             print(f"Loading {filename}.pickle")
             with open(f"{filename}.pickle", "rb") as f:
                 md_data = pickle.load(f)
@@ -689,6 +700,10 @@ class MDDataFrame(object):
             print(f"Loading {filename}/{filename}_md_dataframe.pickle")
             with open(f"{filename}/{filename}_md_dataframe.pickle", "rb") as f:
                 md_data = pickle.load(f)
+        # check if the dataframe is a MDDataFrame
+        if not isinstance(md_data, cls):
+            raise TypeError("The loaded dataframe is not a MDDataFrame.")
+        
         return md_data
 
     @property

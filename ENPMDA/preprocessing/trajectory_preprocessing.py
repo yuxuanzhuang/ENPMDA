@@ -40,8 +40,9 @@ import os
 import MDAnalysis as mda
 import MDAnalysis.transformations as trans
 import dask
+from dask import delayed
 import numpy as np
-from typing import Optional
+from typing import Optional, Union
 
 
 from ENPMDA.utils import GroupHug
@@ -73,7 +74,7 @@ class TrajectoryEnsemble(object):
         trajectory_list: list,
         # bonded_topology_list is an optional list of str
         bonded_topology_list: Optional[list] = None,
-        skip: int = 1,
+        skip: Union[int, list] = 1,
         timestamp: str = timestamp,
         updating: bool = True,
         only_raw: bool = False,
@@ -97,10 +98,11 @@ class TrajectoryEnsemble(object):
         bonded_topology_list: list, optional
             List of tpr files. For providing extra bonded information.
 
-        skip: int, optional
+        skip: int or list, optional
             The number of frame interval to skip.
             This number only applies to the processed trajectory.
             If you set `only_raw=True`, this skip number will be ignored.
+            It can also be a list of skip numbers for each trajectory.
 
         timestamp: str, optional
             The timestamp of creating the ensemble
@@ -127,11 +129,21 @@ class TrajectoryEnsemble(object):
             raise ValueError(
                 "topology_list and trajectory_list must have the same length."
             )
+        #TODO
+        #make sure every file in the list exists
+        
         self.ensemble_name = ensemble_name
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
         self.bonded_topology_list = bonded_topology_list
-        self.skip = skip
+        if type(skip) is list:
+            if len(skip) != len(self.trajectory_list):
+                raise ValueError(
+                    "skip and trajectory_list must have the same length."
+                )
+            self.skip = skip
+        else:
+            self.skip = [skip] * len(self.trajectory_list)
         self.timestamp = timestamp
         self.updating = updating
         self.only_raw = only_raw
@@ -196,30 +208,30 @@ class TrajectoryEnsemble(object):
     def _processing_ensemble(self):
         load_job_list = []
 
-        for ind, (topology, trajectory) in enumerate(
-            zip(self.topology_list, self.trajectory_list)
+        for ind, (topology, trajectory, skip) in enumerate(
+            zip(self.topology_list, self.trajectory_list, self.skip)
         ):
             output_pdb = (
-                os.path.dirname(trajectory) + "/skip" + str(self.skip) + "/system.pdb"
+                os.path.dirname(trajectory) + "/skip" + str(skip) + "/system.pdb"
             )
             if not os.path.isfile(output_pdb):
                 print(trajectory + " new")
                 load_job_list.append(
-                    dask.delayed(self._preprocessing_raw_trajectory)(
-                        topology, trajectory, ind, self.protein_selection
+                    delayed(self._preprocessing_raw_trajectory)(
+                        topology, trajectory, skip, ind, self.protein_selection
                     )
                 )
             elif os.path.getmtime(trajectory) > os.path.getmtime(output_pdb):
                 print(trajectory + " modified.")
                 load_job_list.append(
-                    dask.delayed(self._preprocessing_raw_trajectory)(
-                        topology, trajectory, ind, self.protein_selection
+                    delayed(self._preprocessing_raw_trajectory)(
+                        topology, trajectory, skip, ind, self.protein_selection
                     )
                 )
             else:
                 print(trajectory + " on hold.")
                 load_job_list.append(
-                    dask.delayed(self._load_preprocessing_trajectory)(trajectory)
+                    delayed(self._load_preprocessing_trajectory)(trajectory)
                 )
 
         self.trajectory_files = dask.compute(load_job_list)[0]
@@ -230,11 +242,11 @@ class TrajectoryEnsemble(object):
 
     def _processing_protein(self):
         load_job_list = []
-        for trajectory in self.trajectory_list:
+        for trajectory, skip in zip(self.trajectory_list, self.skip):
             traj_path = os.path.dirname(trajectory)
 
-            if os.path.isfile(traj_path + "/skip" + str(self.skip) + "/protein.xtc"):
-                load_job_list.append(dask.delayed(self._load_protein)(trajectory))
+            if os.path.isfile(traj_path + "/skip" + str(skip) + "/protein.xtc"):
+                load_job_list.append(delayed(self._load_protein)(trajectory, skip))
         self.protein_trajectory_files = dask.compute(load_job_list)[0]
         print("dask finished")
         with open(self.filename + "protein.pickle", "wb") as f:
@@ -243,22 +255,23 @@ class TrajectoryEnsemble(object):
 
     def _processing_system(self):
         load_job_list = []
-        for trajectory in self.trajectory_list:
+        for trajectory, skip in zip(self.trajectory_list, self.skip):
             traj_path = os.path.dirname(trajectory)
-            os.makedirs(traj_path + "/skip" + str(self.skip), exist_ok=True)
-            if os.path.isfile(traj_path + "/skip" + str(self.skip) + "/system.xtc"):
-                load_job_list.append(dask.delayed(self._load_system)(trajectory))
+            os.makedirs(traj_path + "/skip" + str(skip), exist_ok=True)
+            if os.path.isfile(traj_path + "/skip" + str(skip) + "/system.xtc"):
+                load_job_list.append(delayed(self._load_system)(trajectory, skip))
         self.system_trajectory_files = dask.compute(load_job_list)[0]
         print("dask finished")
         with open(self.filename + "system.pickle", "wb") as f:
             pickle.dump(self.system_trajectory_files, f)
             print("pickle traj system universe done")
 
-    def _preprocessing_raw_trajectory(self, topology, trajectory, ind,
+    def _preprocessing_raw_trajectory(self, topology, trajectory, 
+                                      skip, ind,
                                       protein_selection="protein"):
         #    print(trajectory)
         traj_path = os.path.dirname(trajectory)
-        os.makedirs(traj_path + "/skip" + str(self.skip), exist_ok=True)
+        os.makedirs(traj_path + "/skip" + str(skip), exist_ok=True)
         # to ignore most unnecessary warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -298,21 +311,21 @@ class TrajectoryEnsemble(object):
 
             if not self.only_raw:
                 with mda.Writer(
-                    traj_path + "/skip" + str(self.skip) + "/protein.xtc",
+                    traj_path + "/skip" + str(skip) + "/protein.xtc",
                     u_prot.n_atoms,
                 ) as W_prot, mda.Writer(
-                    traj_path + "/skip" + str(self.skip) + "/system.xtc",
+                    traj_path + "/skip" + str(skip) + "/system.xtc",
                     u.atoms.n_atoms,
                 ) as W_sys:
-                    for time, ts in enumerate(u.trajectory[:: self.skip]):
+                    for time, ts in enumerate(u.trajectory[:: skip]):
                         W_prot.write(u.select_atoms(protein_selection))
                         W_sys.write(u.atoms)
 
                 u_prot.write(
-                    traj_path + "/skip" + str(self.skip) + "/protein.pdb", bonds=None
+                    traj_path + "/skip" + str(skip) + "/protein.pdb", bonds=None
                 )
                 u.atoms.write(
-                    traj_path + "/skip" + str(self.skip) + "/system.pdb", bonds=None
+                    traj_path + "/skip" + str(skip) + "/system.pdb", bonds=None
                 )
 
         with open(
@@ -324,8 +337,8 @@ class TrajectoryEnsemble(object):
             self.trajectory_dt[ind] = u.trajectory.dt
             self.trajectory_frame[ind] = u.trajectory.n_frames
         else:
-            self.trajectory_dt[ind] = u.trajectory.dt * self.skip
-            self.trajectory_frame[ind] = int(u.trajectory.n_frames // self.skip)
+            self.trajectory_dt[ind] = u.trajectory.dt * skip
+            self.trajectory_frame[ind] = int(u.trajectory.n_frames // skip)
 
         self.trajectory_time[ind] = u.trajectory.totaltime
 
@@ -340,11 +353,11 @@ class TrajectoryEnsemble(object):
     def _load_preprocessing_trajectory(self, trajectory):
         return self.filename + "_".join(trajectory.split("/")) + ".pickle"
 
-    def _load_protein(self, trajectory):
+    def _load_protein(self, trajectory, skip):
         traj_path = os.path.dirname(trajectory)
         u = mda.Universe(
-            traj_path + "/skip" + str(self.skip) + "/protein.pdb",
-            traj_path + "/skip" + str(self.skip) + "/protein.xtc",
+            traj_path + "/skip" + str(skip) + "/protein.pdb",
+            traj_path + "/skip" + str(skip) + "/protein.xtc",
         )
 
         with open(
@@ -353,11 +366,11 @@ class TrajectoryEnsemble(object):
             pickle.dump(u, f)
         return self.filename + "_".join(trajectory.split("/")) + "_prot.pickle"
 
-    def _load_system(self, trajectory):
+    def _load_system(self, trajectory, skip):
         traj_path = os.path.dirname(trajectory)
         u = mda.Universe(
-            traj_path + "/skip" + str(self.skip) + "/system.pdb",
-            traj_path + "/skip" + str(self.skip) + "/system.xtc",
+            traj_path + "/skip" + str(skip) + "/system.pdb",
+            traj_path + "/skip" + str(skip) + "/system.xtc",
         )
 
         with open(
@@ -374,6 +387,6 @@ class TrajectoryEnsemble(object):
         return (
             os.path.abspath(self.working_dir + self.ensemble_name)
             + "/skip"
-            + str(self.skip)
+            + '_'.join(list(np.unique(self.skip).astype(str)))
             + "/"
         )

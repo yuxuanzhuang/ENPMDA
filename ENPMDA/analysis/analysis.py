@@ -63,7 +63,11 @@ class get_backbonetorsion(DaskChunkMdanalysis):
             ]
         ).transpose(1, 0, 2)
 
-        torsion_angle = np.concatenate([psi_angle, phi_angle], axis=1)
+        #TODO: psi_angle and phi_angle may have different shape
+        try:
+            torsion_angle = np.concatenate([psi_angle, phi_angle], axis=1)
+        except ValueError:
+            torsion_angle = np.stack([phi_angle, psi_angle], axis=1)
         torsion_angle = torsion_angle.reshape(
             torsion_angle.shape[0], torsion_angle.shape[1] * torsion_angle.shape[2]
         )
@@ -72,33 +76,33 @@ class get_backbonetorsion(DaskChunkMdanalysis):
 
 
 class get_atomic_position(DaskChunkMdanalysis):
-    name = "at_position"
+    name = "ca_position"
 
     def set_feature_info(self, universe):
-        backbone_atoms = universe.select_atoms("protein and backbone")
+        ca_atoms = universe.select_atoms("protein and name CA")
         return [
             "_".join([str(residex), feat])
             for residex, feat in itertools.product(
-                backbone_atoms.resindices, ["_bb_pos_x", "_bb_pos_y", "_bb_pos_z"]
+                ca_atoms.resindices, ["_ca_pos_x", "_ca_pos_y", "_ca_pos_z"]
             )
         ]
 
     def run_analysis(self, universe, start, stop, step):
-        backbone_atoms = universe.select_atoms("backbone")
+        ca_atoms = universe.select_atoms("protein and name CA")
         result = []
         for ts in universe.trajectory[start:stop:step]:
             result.append(
-                (backbone_atoms.positions - backbone_atoms.center_of_geometry()).ravel()
+                (ca_atoms.positions - ca_atoms.center_of_geometry()).ravel()
             )
 
         return result
 
 
 class get_rmsd_init(DaskChunkMdanalysis):
-    name = "rmsd_to_init"
+    name = "rmsd_2_init"
 
     def set_feature_info(self, universe):
-        return ["rmsd_to_init"]
+        return ["frame0"]
 
     def run_analysis(self, universe, start, stop, step):
         name_backbone = universe.select_atoms("protein and backbone")
