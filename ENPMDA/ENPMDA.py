@@ -22,10 +22,12 @@ Classes
 
 from datetime import datetime
 import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import numpy as np
-#import awkward as ak
+
+# import awkward as ak
 
 import dask.dataframe as dd
 import dask
@@ -99,6 +101,9 @@ class MDDataFrame(object):
             self.working_dir = os.getcwd() + "/"
         else:
             self.working_dir = os.path.relpath(self.dataframe, os.getcwd())
+
+        # the directory used for the first time
+        self.init_dir = self.working_dir
         self.timestamp = timestamp
         self.trajectory_ensemble = None
         self.analysis_list = []
@@ -271,8 +276,9 @@ class MDDataFrame(object):
         )
         return feat_info
 
-    def get_feature(self, feature_list, extra_metadata=[], in_memory=True,
-                    working_dir=None):
+    def get_feature(
+        self, feature_list, extra_metadata=[], in_memory=True, working_dir=None
+    ):
         """
         Get the features from the dataframe.
 
@@ -285,8 +291,6 @@ class MDDataFrame(object):
         in_memory: bool, optional
             Whether to load the features in memory.
         """
-        working_dir = self.working_dir if working_dir is None else working_dir
-
         meta_data = ["system", "traj_name", "frame", "traj_time"] + extra_metadata
         if not self.computed:
             self.compute()
@@ -302,17 +306,20 @@ class MDDataFrame(object):
             for feature in feature_list:
                 raw_data = np.concatenate(
                     [
-                        np.load(location.replace(self.working_dir,
-                                                 working_dir), allow_pickle=True)
-                        for location, df in tqdm(self.dataframe.groupby(feature,
-                                                                        sort=False),
-                                                    desc="Loading feature {}".format(feature),
-                                                    total=self.dataframe[feature].nunique())
+                        np.load(
+                            location.replace(self.init_dir, self.working_dir),
+                            allow_pickle=True,
+                        )
+                        for location, df in tqdm(
+                            self.dataframe.groupby(feature, sort=False),
+                            desc="Loading feature {}".format(feature),
+                            total=self.dataframe[feature].nunique(),
+                        )
                     ]
                 )
                 feat_info = np.load(
-                    self.analysis_results.filename.replace(self.working_dir, working_dir) + feature + "_feature_info.npy",
-                    allow_pickle=True
+                    self.analysis_results.filename + feature + "_feature_info.npy",
+                    allow_pickle=True,
                 )
                 col_names = [feature + "_" + feat for feat in feat_info]
 
@@ -374,7 +381,6 @@ class MDDataFrame(object):
 
         if not self.computed:
             self.compute()
-
         self.save_name = name
 
         if overwrite:
@@ -543,10 +549,32 @@ class MDDataFrame(object):
         if hasattr(self, "save_name"):
             self.save(self.save_name, overwrite=True)
 
+    def remove_analysis(self, feature_name):
+        """
+        Remove an analysis from the dataframe.
+        """
+        self.analysis_list.remove(feature_name)
+        self.analysis_results.dataframe = self.analysis_results.dataframe.drop(
+            columns=[feature_name]
+        )
+        self.analysis_results.dd_dataframe = self.analysis_results.dd_dataframe.drop(
+            columns=[feature_name]
+        )
+        # remove file
+        file_paths = [
+            location.replace(self.init_dir, self.working_dir)
+            for location, df in self.dataframe.groupby(feature_name, sort=False)
+        ]
+        _ = [os.remove(file_path) for file_path in file_paths]
+        self.dataframe = self.dataframe.drop(columns=[feature_name])
+
     def transform_to_logistic(self, feature_name, logistic):
         raw_data = np.concatenate(
             [
-                np.load(location, allow_pickle=True)
+                np.load(
+                    location.replace(self.init_dir, self.working_dir),
+                    allow_pickle=True,
+                )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
             ]
         )
@@ -594,7 +622,10 @@ class MDDataFrame(object):
     ):
         raw_data = np.concatenate(
             [
-                np.load(location, allow_pickle=True)
+                np.load(
+                    location.replace(self.init_dir, self.working_dir),
+                    allow_pickle=True,
+                )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
             ]
         )
@@ -637,7 +668,10 @@ class MDDataFrame(object):
     def transform_to_reciprocal(self, feature_name):
         raw_data = np.concatenate(
             [
-                np.load(location, allow_pickle=True)
+                np.load(
+                    location.replace(self.init_dir, self.working_dir),
+                    allow_pickle=True,
+                )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
             ]
         )
@@ -703,7 +737,11 @@ class MDDataFrame(object):
         # check if the dataframe is a MDDataFrame
         if not isinstance(md_data, cls):
             raise TypeError("The loaded dataframe is not a MDDataFrame.")
-        
+        md_data.working_dir = os.getcwd() + "/"
+        # if attribute init_dir not found
+        if not hasattr(md_data, "init_dir"):
+            md_data.init_dir = md_data.working_dir
+        md_data.analysis_results.working_dir = md_data.filename
         return md_data
 
     @property
