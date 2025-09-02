@@ -44,8 +44,11 @@ from dask import delayed
 import numpy as np
 from typing import Optional, Union
 
+from loguru import logger
+
 
 from ENPMDA.utils import GroupHug
+from ENPMDA.preprocessing.alignment import AlignmentBase
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -74,12 +77,16 @@ class TrajectoryEnsemble(object):
         trajectory_list: list,
         # bonded_topology_list is an optional list of str
         bonded_topology_list: Optional[list] = None,
+        trajectory_names: Optional[list] = None,
         skip: Union[int, list] = 1,
         timestamp: str = timestamp,
         updating: bool = True,
         only_raw: bool = False,
         wrapping: bool = True,
         protein_selection: str = "protein",
+        chain_info_dicts: Optional[Union[dict, list]] = None,
+        regenerate_ensemble: bool = False,
+        alignment: AlignmentBase = None,
     ):
         r"""
         Parameters
@@ -98,6 +105,10 @@ class TrajectoryEnsemble(object):
         bonded_topology_list: list, optional
             List of tpr files. For providing extra bonded information.
 
+        trajectory_names: list, optional
+            List of names for each trajectory.
+            If not provided, the path of the trajectory will be used.
+            
         skip: int or list, optional
             The number of frame interval to skip.
             This number only applies to the processed trajectory.
@@ -124,6 +135,22 @@ class TrajectoryEnsemble(object):
         protein_selection: str, optional
             The selection string for `protein.pdb`. Default is "protein".
             Can also be any selection string supported by MDAnalysis.
+
+        chain_info_dicts: dict or list of dict, optional
+            The dictionary of chain information.
+            It can be used to add chain information to the Universe.
+            example: {'segid P1': 'P1', 'segid P2': 'P2'}
+            If it is a list of dict, it should have the same length as
+            `trajectory_list`. Each dict will be used for the corresponding
+            trajectory.
+
+        regenerate_ensemble: bool, optional
+            If True, the ensemble will be regenerated even if it was
+            processed before. Default is False.
+
+        alignment: AlignmentBase, optional
+            The alignment object to align the trajectory.
+            It should be a subclass of `AlignmentBase`.
         """
         if len(topology_list) != len(trajectory_list):
             raise ValueError(
@@ -136,6 +163,7 @@ class TrajectoryEnsemble(object):
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
         self.bonded_topology_list = bonded_topology_list
+        self.trajectory_names = trajectory_names if trajectory_names is not None else trajectory_list
         if type(skip) is list:
             if len(skip) != len(self.trajectory_list):
                 raise ValueError(
@@ -149,10 +177,13 @@ class TrajectoryEnsemble(object):
         self.only_raw = only_raw
         self.wrapping = wrapping
         self.protein_selection = protein_selection
+        self.chain_info_dicts = chain_info_dicts
+        self.regenerate_ensemble = regenerate_ensemble
+        self.alignment = alignment
 
         if self.bonded_topology_list is None:
             self.fix_chain = False
-            print(
+            logger.info(
                 "No bonded_topology_list provided. \n", "PBC and chain cannot be fixed."
             )
         else:
@@ -161,6 +192,14 @@ class TrajectoryEnsemble(object):
                     "bonded_topology_list and trajectory_list must have the same length."
                 )
             self.fix_chain = True
+
+        if self.chain_info_dicts is not None:
+            if type(self.chain_info_dicts) is dict:
+                self.chain_info_dicts = [self.chain_info_dicts] * len(self.trajectory_list)
+            if len(self.chain_info_dicts) != len(self.trajectory_list):
+                raise ValueError(
+                    "chain_info_dicts and trajectory_list must have the same length."
+                )
 
         if not os.path.isabs(self.ensemble_name):
             self.working_dir = os.getcwd() + "/"
@@ -205,8 +244,55 @@ class TrajectoryEnsemble(object):
         if not len(set(self.trajectory_dt)) <= 1:
             warnings.warn("dt is not the same for all trajectories.", stacklevel=2)
 
+
+    def _handle_same_folder_trajectory(self):
+        """Handle trajectories in the same folder by creating additional folder"""
+        
+        files_by_folder = {}
+        for file_path in self.trajectory_list:
+            folder = os.path.dirname(file_path)
+            if folder not in files_by_folder:
+                files_by_folder[folder] = []
+            files_by_folder[folder].append(file_path)
+        
+        files_by_folder = {folder: paths for folder, paths in files_by_folder.items() if len(paths) > 1}
+
+        if not files_by_folder:
+            return
+
+        # Create a list to store the new paths in the same order
+        new_trajectory_list = []
+
+        # Create a folder for each file and create a symbolic link in its respective folder
+        for folder, file_list in files_by_folder.items():
+            for file_path in file_list:
+                # Get the file name without extension to use as the new folder name
+                file_name = os.path.basename(file_path)
+                file_name_without_ext = os.path.splitext(file_name)[0]
+
+                # Create a new folder under the current folder
+                new_folder_path = os.path.join(folder, file_name_without_ext)
+                os.makedirs(new_folder_path, exist_ok=True)
+
+                relative_path = os.path.relpath(file_path, new_folder_path)
+
+                # Create the symbolic link inside the new folder using the relative path
+                link_path = os.path.join(new_folder_path, file_name)
+                try:
+                    os.symlink(relative_path, link_path)
+                except FileExistsError:
+                    pass
+
+                # Add the new path (link path) to the new trajectory list in the same order
+                new_trajectory_list.append(link_path)
+
+        # Update self.trajectory_list to the new paths
+        self.trajectory_list = new_trajectory_list
+
+
     def _processing_ensemble(self):
         load_job_list = []
+        self._handle_same_folder_trajectory()
 
         for ind, (topology, trajectory, skip) in enumerate(
             zip(self.topology_list, self.trajectory_list, self.skip)
@@ -214,31 +300,31 @@ class TrajectoryEnsemble(object):
             output_pdb = (
                 os.path.dirname(trajectory) + "/skip" + str(skip) + "/system.pdb"
             )
-            if not os.path.isfile(output_pdb):
-                print(trajectory + " new")
+            if not os.path.isfile(output_pdb) or self.regenerate_ensemble:
+                logger.info(trajectory + " new")
                 load_job_list.append(
                     delayed(self._preprocessing_raw_trajectory)(
                         topology, trajectory, skip, ind, self.protein_selection
                     )
                 )
             elif os.path.getmtime(trajectory) > os.path.getmtime(output_pdb):
-                print(trajectory + " modified.")
+                logger.info(trajectory + " modified.")
                 load_job_list.append(
                     delayed(self._preprocessing_raw_trajectory)(
                         topology, trajectory, skip, ind, self.protein_selection
                     )
                 )
             else:
-                print(trajectory + " on hold.")
+                logger.debug(trajectory + " on hold.")
                 load_job_list.append(
                     delayed(self._load_preprocessing_trajectory)(trajectory)
                 )
 
         self.trajectory_files = dask.compute(load_job_list)[0]
-        print("dask finished")
+        logger.debug("dask finished")
         with open(self.filename + "raw_traj.pickle", "wb") as f:
             pickle.dump(self.trajectory_files, f)
-            print("pickle raw_traj universe done")
+            logger.debug("pickle raw_traj universe done")
 
     def _processing_protein(self):
         load_job_list = []
@@ -248,10 +334,10 @@ class TrajectoryEnsemble(object):
             if os.path.isfile(traj_path + "/skip" + str(skip) + "/protein.xtc"):
                 load_job_list.append(delayed(self._load_protein)(trajectory, skip))
         self.protein_trajectory_files = dask.compute(load_job_list)[0]
-        print("dask finished")
+        logger.debug("dask finished")
         with open(self.filename + "protein.pickle", "wb") as f:
             pickle.dump(self.protein_trajectory_files, f)
-            print("pickle traj protein universe done")
+            logger.debug("pickle traj protein universe done")
 
     def _processing_system(self):
         load_job_list = []
@@ -261,21 +347,23 @@ class TrajectoryEnsemble(object):
             if os.path.isfile(traj_path + "/skip" + str(skip) + "/system.xtc"):
                 load_job_list.append(delayed(self._load_system)(trajectory, skip))
         self.system_trajectory_files = dask.compute(load_job_list)[0]
-        print("dask finished")
+        logger.debug("dask finished")
         with open(self.filename + "system.pickle", "wb") as f:
             pickle.dump(self.system_trajectory_files, f)
-            print("pickle traj system universe done")
+            logger.debug("pickle traj system universe done")
 
     def _preprocessing_raw_trajectory(self, topology, trajectory, 
                                       skip, ind,
                                       protein_selection="protein"):
-        #    print(trajectory)
+        #    logger.info(trajectory)
         traj_path = os.path.dirname(trajectory)
         os.makedirs(traj_path + "/skip" + str(skip), exist_ok=True)
         # to ignore most unnecessary warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             u = mda.Universe(topology, trajectory)
+            if self.chain_info_dicts is not None:
+                self._add_chaininfo(u, self.chain_info_dicts[ind])
 
             u_prot = u.select_atoms(protein_selection)
 
@@ -350,15 +438,47 @@ class TrajectoryEnsemble(object):
 
         return self.filename + "_".join(trajectory.split("/")) + ".pickle"
 
+    @staticmethod
+    def _add_chaininfo(universe, chain_info_dict):
+        """
+        Add chain information to the Universe.
+
+        Parameters
+        ----------
+        universe: mda.Universe
+            The Universe to add chain information to.
+
+        chain_info_dict: dict
+            The dictionary of chain information.
+            example: {'segid P1': 'P1', 'segid P2': 'P2'}
+        """
+        universe.add_TopologyAttr("chainID")
+        for seg_select, chain_value in chain_info_dict.items():
+            universe.select_atoms(seg_select).chainIDs = chain_value
+
+
     def _load_preprocessing_trajectory(self, trajectory):
         return self.filename + "_".join(trajectory.split("/")) + ".pickle"
 
     def _load_protein(self, trajectory, skip):
         traj_path = os.path.dirname(trajectory)
+        top_file = traj_path + "/skip" + str(skip) + "/protein.pdb"
+        xtc_file = traj_path + "/skip" + str(skip) + "/protein.xtc"
+
         u = mda.Universe(
-            traj_path + "/skip" + str(skip) + "/protein.pdb",
-            traj_path + "/skip" + str(skip) + "/protein.xtc",
+            top_file,
+            xtc_file,
         )
+        if self.alignment is not None:
+            output_prefix = traj_path + "/skip" + str(skip) + "/protein_aligned"
+            self.alignment.universe = u
+            self.alignment.output_prefix = output_prefix
+            self.alignment.process_universe()
+
+            u = mda.Universe(
+                output_prefix + ".pdb",
+                output_prefix + ".xtc",
+            )
 
         with open(
             self.filename + "_".join(trajectory.split("/")) + "_prot.pickle", "wb"
@@ -368,10 +488,28 @@ class TrajectoryEnsemble(object):
 
     def _load_system(self, trajectory, skip):
         traj_path = os.path.dirname(trajectory)
+        top_file = traj_path + "/skip" + str(skip) + "/system.pdb"
+        xtc_file = traj_path + "/skip" + str(skip) + "/system.xtc"
+
         u = mda.Universe(
-            traj_path + "/skip" + str(skip) + "/system.pdb",
-            traj_path + "/skip" + str(skip) + "/system.xtc",
+            top_file,
+            xtc_file,
+            topology_format='XPDB'
         )
+
+        # TODO
+        # disable alignment for now
+        if self.alignment is not None and False:
+            output_prefix = traj_path + "/skip" + str(skip) + "/system_aligned"
+
+            self.alignment.universe = u
+            self.alignment.output_prefix = output_prefix
+            self.alignment.process_universe()
+
+            u = mda.Universe(
+                output_prefix + ".pdb",
+                output_prefix + ".xtc",
+            )
 
         with open(
             self.filename + "_".join(trajectory.split("/")) + "_sys.pickle", "wb"

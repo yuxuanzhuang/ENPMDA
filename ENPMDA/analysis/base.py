@@ -68,10 +68,10 @@ class AnalysisResult(dict):
     def compute(self, item=None):
         if item is None:
             for item, df in self.items():
-                if isinstance(df, dd.core.DataFrame):
+                if isinstance(df, dd.DataFrame):
                     self[item] = df.compute()[["system", item]]
         elif item in self.keys():
-            if isinstance(df, dd.core.DataFrame):
+            if isinstance(df, dd.DataFrame):
                 self[item] = df.compute()[["system", item]]
         else:
             raise ValueError(item + " not in dict")
@@ -167,7 +167,7 @@ class DaskChunkMdanalysis(object):
         result = []
 
         # run analysis
-        for system, df_sys in df.groupby(["system"]):
+        for system, df_sys in df.groupby("system", sort=False):
             # if system information has to be used set `universe_file =
             # 'system'`
             if self.universe_file == "protein":
