@@ -4,7 +4,7 @@ channels:
 
 dependencies:
   # Let CI decide the Python version; setup-miniconda will inject it.
-  - python=3.11
+  - python
   - pip
   - cython<3.1
   
