@@ -20,6 +20,7 @@ dependencies:
   # Testing
   - pytest>=8.3
   - pytest-xdist>=3.6
+  - pytest-cov>=4.1
   - coverage>=7.6
   - tox>=4.18
 
