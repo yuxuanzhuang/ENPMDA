@@ -1,0 +1,169 @@
+name: GH Actions CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Weekly tests at midnight on Sundays
+    - cron: "0 0 * * 0"
+
+concurrency:
+  # Cancel only runs from the same ref / PR for this workflow
+  group: ${{ github.ref }}-${{ github.head_ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+jobs:
+  main-tests:
+    if: "github.repository == 'yuxuanzhuang/ENPMDA'"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows often fails due to symlink permissions in tests; omit by default
+        os: [ubuntu-latest, macOS-latest]
+        mdanalysis-version: ["latest", "develop"]
+        python-version: ["3.10", "3.11", "3.12"]
+        exclude:
+          # Example: exclude Python 3.12 with "latest" MDAnalysis if desired
+          - mdanalysis-version: "latest"
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build information
+        run: |
+          uname -a || true
+          df -h || true
+          ulimit -a || true
+
+      # More info: https://github.com/conda-incubator/setup-miniconda
+      - name: Install conda dependencies
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+          environment-file: devtools/conda-envs/test_env.yaml
+          add-pip-as-python-dependency: true
+
+          miniforge-version: "latest"
+          use-mamba: true
+          channels: conda-forge
+
+          activate-environment: enpmda-test
+          auto-update-conda: true
+          auto-activate-base: false
+          show-channel-urls: true
+
+      - name: Install MDAnalysis version
+        uses: MDAnalysis/install-mdanalysis@main
+        with:
+          version: ${{ matrix.mdanalysis-version }}
+          install-tests: false
+          installer: mamba
+          shell: bash -l {0}
+
+      - name: Install package
+        env:
+          # keep thread counts low for CI stability
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+        run: |
+          python --version
+          python -m pip install . --no-deps
+
+      - name: Python information
+        run: |
+          which python
+          which pip
+          pip list
+          conda info
+          conda list
+
+      - name: Run tests
+        env:
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+        run: |
+          # Show tree for debugging if needed
+          # find .
+          pytest -n 2 -v --cov=ENPMDA --cov-report=xml --color=yes tests/
+
+      - name: codecov
+        if: github.repository == 'yuxuanzhuang/ENPMDA' && github.event_name != 'schedule'
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.xml
+          name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
+          verbose: true
+          # Set CODECOV_TOKEN in repo secrets for coverage uploads
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+
+  pylint_check:
+    if: "github.repository == 'yuxuanzhuang/ENPMDA'"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Pylint and minimal deps
+        run: |
+          which pip
+          which python
+          pip install pylint mdanalysis
+
+      - name: Run Pylint
+        env:
+          PYLINTRC: .pylintrc
+        run: |
+          pylint .
+
+  pypi_check:
+    if: "github.repository == 'yuxuanzhuang/ENPMDA'"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packaging tooling
+        run: |
+          pip install pipx twine build
+
+      - name: Build package (sdist + wheel)
+        run: |
+          python -m build
+
+      - name: Check package build
+        run: |
+          # Prefer wheel check, but fallback to sdist if needed
+          DIST_WHL=$(ls -t1 dist/ENPMDA-*.whl 2>/dev/null | head -n 1 || true)
+          DIST_SDIST=$(ls -t1 dist/ENPMDA-*.tar.gz 2>/dev/null | head -n 1 || true)
+          if [ -n "$DIST_WHL" ]; then
+            echo "twine check $DIST_WHL"
+            twine check "$DIST_WHL"
+          fi
+          if [ -n "$DIST_SDIST" ]; then
+            echo "twine check $DIST_SDIST"
+            twine check "$DIST_SDIST"
+          fi
+          test -n "$DIST_WHL$DIST_SDIST" || { echo "No distributions found in dist/"; exit 1; }
