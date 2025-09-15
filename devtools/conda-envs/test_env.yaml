@@ -16,6 +16,7 @@ dependencies:
   - distributed
   - bokeh
   - tqdm
+  - loguru
 
   # Testing
   - pytest>=8.3
