@@ -47,7 +47,7 @@ from typing import Optional, Union
 from loguru import logger
 
 
-from ENPMDA.utils import GroupHug
+from ENPMDA.utils import GroupHug, normalize_user_path
 from ENPMDA.preprocessing.alignment import AlignmentBase
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -75,7 +75,6 @@ class TrajectoryEnsemble(object):
         ensemble_name: str,
         topology_list: list,
         trajectory_list: list,
-        # bonded_topology_list is an optional list of str
         bonded_topology_list: Optional[list] = None,
         trajectory_names: Optional[list] = None,
         skip: Union[int, list] = 1,
@@ -91,87 +90,88 @@ class TrajectoryEnsemble(object):
         r"""
         Parameters
         ----------
-        ensemble_name: str
-            The name of the ensemble. It will be used as the folder
-            to save the pickled Universes.
-            It can also be the absolute path to the folder.
+        ensemble_name : str
+            Name **or absolute/relative path** of the ensemble folder.
+            Pickled Universes and processed outputs will be saved here.
 
-        topology_list: list
-            List of topology files, e.g. gro, pdb, etc.
+        topology_list : list
+            List of topology files (e.g., gro, pdb, etc.).
 
-        trajectory_list: list
-            List of trajectory files, e.g. xtc, trr, etc.
+        trajectory_list : list
+            List of trajectory files (e.g., xtc, trr, etc.).
 
-        bonded_topology_list: list, optional
-            List of tpr files. For providing extra bonded information.
+        bonded_topology_list : list, optional
+            List of topology files with bond info (e.g., tpr) for PBC/chain fixes.
 
-        trajectory_names: list, optional
-            List of names for each trajectory.
-            If not provided, the path of the trajectory will be used.
-            
-        skip: int or list, optional
-            The number of frame interval to skip.
-            This number only applies to the processed trajectory.
-            If you set `only_raw=True`, this skip number will be ignored.
-            It can also be a list of skip numbers for each trajectory.
+        trajectory_names : list, optional
+            Names for each trajectory; defaults to the provided paths.
 
-        timestamp: str, optional
-            The timestamp of creating the ensemble
-            It will be set to the current time if not provided.
+        skip : int or list, optional
+            Frame stride(s) for processed trajectories (ignored when only_raw=True).
+            Either a single int or a list matching `trajectory_list` length.
 
-        updating: bool, optional
-            If True, the trajectory will be updated
-            even if the trajectory was processed before.
+        timestamp : str, optional
+            Creation timestamp.
 
-        only_raw: bool, optional
-            If True, only the raw trajectory will be returned.
-            Otherwise, on-the-fly transformation will be applied
-            to trajectories and processed trajectories
-            for protein and system will be returned.
+        updating : bool, optional
+            Reprocess even if outputs exist.
 
-        wrapping: bool, optional
-            If True, all the atoms will be wrapped inside the box.
+        only_raw : bool, optional
+            If True, do not write processed protein/system trajectories.
 
-        protein_selection: str, optional
-            The selection string for `protein.pdb`. Default is "protein".
-            Can also be any selection string supported by MDAnalysis.
+        wrapping : bool, optional
+            If True, wrap atoms back into the box after unwrapping.
 
-        chain_info_dicts: dict or list of dict, optional
-            The dictionary of chain information.
-            It can be used to add chain information to the Universe.
-            example: {'segid P1': 'P1', 'segid P2': 'P2'}
-            If it is a list of dict, it should have the same length as
-            `trajectory_list`. Each dict will be used for the corresponding
-            trajectory.
+        protein_selection : str, optional
+            MDAnalysis selection string for the protein.
 
-        regenerate_ensemble: bool, optional
-            If True, the ensemble will be regenerated even if it was
-            processed before. Default is False.
+        chain_info_dicts : dict or list of dict, optional
+            Chain assignment(s). If a single dict is given, it is broadcast.
 
-        alignment: AlignmentBase, optional
-            The alignment object to align the trajectory.
-            It should be a subclass of `AlignmentBase`.
+        regenerate_ensemble : bool, optional
+            Force regeneration of processed outputs.
+
+        alignment : AlignmentBase, optional
+            Alignment object applied to protein/system after processing.
         """
+        # --- Basic validation ---
         if len(topology_list) != len(trajectory_list):
-            raise ValueError(
-                "topology_list and trajectory_list must have the same length."
-            )
-        #TODO
-        #make sure every file in the list exists
-        
-        self.ensemble_name = ensemble_name
+            raise ValueError("topology_list and trajectory_list must have the same length.")
+
+        # (Optional) bonded info presence check
+        if bonded_topology_list is None:
+            self.fix_chain = False
+            logger.info("No bonded_topology_list provided. \nPBC and chain cannot be fixed.")
+        else:
+            if len(bonded_topology_list) != len(trajectory_list):
+                raise ValueError(
+                    "bonded_topology_list and trajectory_list must have the same length."
+                )
+            self.fix_chain = True
+
+        # Normalize/prepare chain info dicts
+        if chain_info_dicts is not None:
+            if isinstance(chain_info_dicts, dict):
+                chain_info_dicts = [chain_info_dicts] * len(trajectory_list)
+            if len(chain_info_dicts) != len(trajectory_list):
+                raise ValueError(
+                    "chain_info_dicts and trajectory_list must have the same length."
+                )
+
+        # --- Store user inputs ---
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
         self.bonded_topology_list = bonded_topology_list
         self.trajectory_names = trajectory_names if trajectory_names is not None else trajectory_list
-        if type(skip) is list:
+
+        # Normalize skip into a list matching #trajectories
+        if isinstance(skip, list):
             if len(skip) != len(self.trajectory_list):
-                raise ValueError(
-                    "skip and trajectory_list must have the same length."
-                )
+                raise ValueError("skip and trajectory_list must have the same length.")
             self.skip = skip
         else:
             self.skip = [skip] * len(self.trajectory_list)
+
         self.timestamp = timestamp
         self.updating = updating
         self.only_raw = only_raw
@@ -181,36 +181,21 @@ class TrajectoryEnsemble(object):
         self.regenerate_ensemble = regenerate_ensemble
         self.alignment = alignment
 
-        if self.bonded_topology_list is None:
-            self.fix_chain = False
-            logger.info(
-                "No bonded_topology_list provided. \n", "PBC and chain cannot be fixed."
-            )
-        else:
-            if len(bonded_topology_list) != len(trajectory_list):
-                raise ValueError(
-                    "bonded_topology_list and trajectory_list must have the same length."
-                )
-            self.fix_chain = True
-
-        if self.chain_info_dicts is not None:
-            if type(self.chain_info_dicts) is dict:
-                self.chain_info_dicts = [self.chain_info_dicts] * len(self.trajectory_list)
-            if len(self.chain_info_dicts) != len(self.trajectory_list):
-                raise ValueError(
-                    "chain_info_dicts and trajectory_list must have the same length."
-                )
-
-        if not os.path.isabs(self.ensemble_name):
-            self.working_dir = os.getcwd() + "/"
-        else:
-            self.working_dir = ""
-
-        # store meta information
+        # Treat ensemble_name as "folder path"; split into (dir, name)
+        abs_path = normalize_user_path(ensemble_name)
+        self.ensemble_name = os.path.basename(abs_path)
+        self.working_dir = os.path.dirname(abs_path) + os.sep
+        
         self.trajectory_dt = np.zeros(len(self.trajectory_list))
         self.trajectory_time = np.zeros(len(self.trajectory_list))
         self.trajectory_frame = np.zeros(len(self.trajectory_list))
 
+        # These are set in load_ensemble()/processing
+        self.trajectory_files = None
+        self.protein_trajectory_files = None
+        self.system_trajectory_files = None
+
+        # Ensure output directory exists (uses self.filename property)
         os.makedirs(self.filename, exist_ok=True)
 
     def load_ensemble(self):
@@ -316,9 +301,17 @@ class TrajectoryEnsemble(object):
                 )
             else:
                 logger.debug(trajectory + " on hold.")
-                load_job_list.append(
-                    delayed(self._load_preprocessing_trajectory)(trajectory)
-                )
+                # Ensure the expected pickle exists (raw-only workflows may skip writing it).
+                expected_pickle = self._load_preprocessing_trajectory(trajectory)
+                if self.regenerate_ensemble or not os.path.isfile(expected_pickle):
+                    # (Re)generate the pickle by actually preprocessing once.
+                    load_job_list.append(
+                        delayed(self._preprocessing_raw_trajectory)(
+                            topology, trajectory, skip, ind, self.protein_selection
+                        )
+                    )
+                else:
+                    load_job_list.append(delayed(self._load_preprocessing_trajectory)(trajectory))
 
         self.trajectory_files = dask.compute(load_job_list)[0]
         logger.debug("dask finished")

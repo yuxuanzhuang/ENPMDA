@@ -40,6 +40,7 @@ from loguru import logger
 
 from ENPMDA.analysis.base import AnalysisResult
 from ENPMDA.preprocessing import TrajectoryEnsemble
+from ENPMDA.utils import normalize_user_path
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 meta_data_list = [
@@ -93,17 +94,30 @@ class MDDataFrame(object):
         self.computed = False
         self.sorted = False
 
-        # set working dir to absolute directory
-        if not os.path.isabs(self.dataframe_name):
-            self.working_dir = os.getcwd() + "/"
-        else:
-            self.working_dir = os.path.relpath(self.dataframe, os.getcwd())
+        # Turn whatever the user passed (name or path) into an absolute path.
+        abs_path = normalize_user_path(self.dataframe_name)
+        self.dataframe_name = os.path.basename(abs_path)
+        self.working_dir = os.path.dirname(abs_path) + os.sep
 
-        # the directory used for the first time
+        # Record the initial base directory used at creation time
         self.init_dir = self.working_dir
         self.timestamp = timestamp
+
+        # Placeholders set during later calls (e.g., add_traj_ensemble)
         self.trajectory_ensemble = None
         self.analysis_list = []
+
+        # Commonly referenced attributes (initialized to safe defaults)
+        self.npartitions = None
+        self.stride = 1
+
+        self.trajectory_files = None
+        self.trajectory_names = None
+        self.protein_trajectory_files = None
+        self.system_trajectory_files = None
+
+        self.dd_dataframe = None
+        self.analysis_results = None
 
     def add_traj_ensemble(
         self, trajectory_ensemble: TrajectoryEnsemble, npartitions, stride=1
@@ -173,8 +187,11 @@ class MDDataFrame(object):
         universe_system = self.system_trajectory_files[system]
         md_name = self.trajectory_names[system]
 
-        u = pickle.load(open(universe, "rb"))
-        u_sys = pickle.load(open(universe_system, "rb"))
+        with open(universe, "rb") as fh:
+            u = pickle.load(fh)
+        with open(universe_system, "rb") as fh:
+            u_sys = pickle.load(fh)
+
         if u.trajectory.n_frames != u_sys.trajectory.n_frames:
             raise ValueError(
                 f"In system {system}, number of frames in protein and system trajectories are different!"
@@ -458,6 +475,9 @@ class MDDataFrame(object):
                 self.dump(name)
 
     def dump(self, filename, backup=False):
+        # ensure directory exists
+        os.makedirs(self.filename, exist_ok=True)
+
         if backup:
             try:
                 shutil.copyfile(
@@ -743,33 +763,73 @@ class MDDataFrame(object):
     @classmethod
     def load_dataframe(cls, filename) -> "MDDataFrame":
         """
-        Load the dataframe from a pickle file.
+        Load an MDDataFrame object from pickle files.
 
-        Parameters
-        ----------
-        filename: str, optional
-            The name of the pickle file.
+        Accepts inputs like:
+        - <dir>/<base>
+        - <dir>/<base>.pickle
+        - <dir>/<base>_md_dataframe.pickle
+        Prefers '<base>_md_dataframe.pickle' (the object) over '<base>.pickle' (the raw DataFrame).
         """
-        if os.path.isfile(filename):
-            logger.info(f"Loading {filename}")
-            with open(filename, "rb") as f:
+        # --- normalize the incoming filename (handle './' + absolute, etc.) ---
+        def _normalize_user_path(p: str) -> str:
+            dot_slash = "." + os.sep
+            if p.startswith(dot_slash) and os.path.isabs(p[len(dot_slash):]):
+                p = p[len(dot_slash):]
+            return os.path.abspath(p)
+
+        norm = _normalize_user_path(filename)
+
+        # If caller passed a full file path with extension, split it;
+        # otherwise treat it as "<dir>/<base>" (no extension).
+        base_dir = os.path.dirname(norm)
+        base_name = os.path.basename(norm)
+
+        # Strip known extensions from base_name for consistent candidate building
+        for ext in ("_md_dataframe.pickle", ".pickle"):
+            if base_name.endswith(ext):
+                base_name = base_name[: -len(ext)]
+                break
+
+        # Candidates in preferred order
+        md_obj_path   = os.path.join(base_dir, f"{base_name}_md_dataframe.pickle")
+        exact_given   = norm  # in case the caller already pointed to the md_dataframe pickle
+        base_df_path  = os.path.join(base_dir, f"{base_name}.pickle")
+
+        md_data = None
+
+        # 1) Prefer the MDDataFrame object pickle
+        if os.path.isfile(md_obj_path):
+            with open(md_obj_path, "rb") as f:
                 md_data = pickle.load(f)
-        elif os.path.isfile(f"{filename}.pickle"):
-            logger.info(f"Loading {filename}.pickle")
-            with open(f"{filename}.pickle", "rb") as f:
+
+        # 2) Try exactly what we were given (if it's a file)
+        if md_data is None and os.path.isfile(exact_given):
+            with open(exact_given, "rb") as f:
                 md_data = pickle.load(f)
-        else:
-            logger.info(f"Loading {filename}/{filename}_md_dataframe.pickle")
-            with open(f"{filename}/{filename}_md_dataframe.pickle", "rb") as f:
+
+        # 3) Fall back to the plain DataFrame pickle
+        if md_data is None and os.path.isfile(base_df_path):
+            with open(base_df_path, "rb") as f:
                 md_data = pickle.load(f)
-        # check if the dataframe is a MDDataFrame
+            # If this was the plain DataFrame, try to load the sibling MD object
+            if not isinstance(md_data, cls) and os.path.isfile(md_obj_path):
+                with open(md_obj_path, "rb") as f:
+                    md_data = pickle.load(f)
+
         if not isinstance(md_data, cls):
             raise TypeError("The loaded dataframe is not a MDDataFrame.")
-        md_data.working_dir = os.getcwd() + "/"
-        # if attribute init_dir not found
+
+        # --- repair paths on the loaded object (robust across hosts/CWDs) ---
+        # Ensure working_dir ends with a separator and matches the absolute directory of `filename` property.
+        md_data.working_dir = os.path.dirname(os.path.abspath(md_data.filename)) + os.sep
         if not hasattr(md_data, "init_dir"):
             md_data.init_dir = md_data.working_dir
-        md_data.analysis_results.working_dir = md_data.filename
+
+        # Point analysis_results to the correct save dir
+        if hasattr(md_data, "analysis_results") and hasattr(md_data.analysis_results, "working_dir"):
+            md_data.analysis_results.working_dir = md_data.filename
+
         return md_data
 
     @property
