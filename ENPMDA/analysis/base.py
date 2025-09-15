@@ -67,9 +67,9 @@ class AnalysisResult(dict):
 
     def compute(self, item=None):
         if item is None:
-            for item, df in self.items():
+            for it, df in self.items():
                 if isinstance(df, dd.DataFrame):
-                    self[item] = df.compute()[["system", item]]
+                    self[it] = df.compute()[["system", it]]
         elif item in self.keys():
             if isinstance(df, dd.DataFrame):
                 self[item] = df.compute()[["system", item]]
@@ -80,9 +80,11 @@ class AnalysisResult(dict):
         # sanity check and get feature info
         check_analysis_function = analysis_function(filename=self.filename, **kwargs)
         if check_analysis_function.universe_file == "protein":
-            universe = pickle.load(open(self.dataframe.iloc[0].universe_protein, "rb"))
+            with open(self.dataframe.iloc[0].universe_protein, "rb") as f:
+                universe = pickle.load(f)
         else:
-            universe = pickle.load(open(self.dataframe.iloc[0].universe_system, "rb"))
+            with open(self.dataframe.iloc[0].universe_system, "rb") as f:
+                universe = pickle.load(f)
 
         feature_info = check_analysis_function.set_feature_info(universe)
         if check_analysis_function.output == "array":
@@ -171,9 +173,11 @@ class DaskChunkMdanalysis(object):
             # if system information has to be used set `universe_file =
             # 'system'`
             if self.universe_file == "protein":
-                universe = pickle.load(open(df_sys.universe_protein.iloc[0], "rb"))
+                with open(df_sys.universe_protein.iloc[0], "rb") as f:
+                    universe = pickle.load(f)
             else:
-                universe = pickle.load(open(df_sys.universe_system.iloc[0], "rb"))
+                with open(df_sys.universe_system.iloc[0], "rb") as f:
+                    universe = pickle.load(f)
             start = df_sys.frame.iloc[0]
             stop = df_sys.frame.iloc[-1] + 1
             step = df_sys.stride.iloc[0]

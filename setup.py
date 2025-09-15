@@ -1,56 +1,64 @@
 #!/usr/bin/env python
 
-"""The setup script."""
+"""The setup script for ENPMDA."""
 
+from pathlib import Path
 from setuptools import setup, find_packages
 
-RELEASE='0.5.0'
+RELEASE = "1.0.0"
 
-with open('README.rst') as readme_file:
-    readme = readme_file.read()
+readme = Path("README.rst").read_text(encoding="utf-8") if Path("README.rst").exists() else ""
+history = Path("HISTORY.rst").read_text(encoding="utf-8") if Path("HISTORY.rst").exists() else ""
 
-with open('HISTORY.rst') as history_file:
-    history = history_file.read()
-
+# Runtime dependencies
 requirements = [
-    'mdanalysis>=2.0.0',
-    'dask[complete]',
-    'distributed',
-    'numpy',
-    'pandas',
+    "MDAnalysis>=2.8.0",
+    "dask[dataframe]>=2024.1.0",
+    "distributed>=2024.1.0",
+    "numpy>=1.23",
+    "pandas>=1.5",
 ]
 
-test_requirements = [
-    'pytest>=3',
-    'numpy',
-    'ENPMDATests=={0!s}'.format(RELEASE),
-]
+# Optional extras (install with: pip install .[tests])
+extras_require = {
+    "tests": [
+        "pytest>=7",
+        "pytest-xdist>=3",
+        "numpy",  # assert helpers
+    ],
+}
 
 setup(
-    author="Yuxuan Zhuang",
-    author_email='yuxuan.zhuang@dbb.su.se',
-    python_requires='>=3.6',
-    classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
-        'Natural Language :: English',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
-    ],
-    description="parallel analysis for ensemble simulations",
-    install_requires=requirements,
-    license="GNU General Public License v3",
-    long_description=readme + '\n\n' + history,
-    include_package_data=True,
-    keywords='ENPMDA',
-    name='ENPMDA',
-    packages=find_packages(include=['ENPMDA', 'ENPMDA.*']),
-    test_suite='tests',
-    tests_require=test_requirements,
-    url='https://github.com/yuxuanzhuang/ENPMDA',
+    name="ENPMDA",
     version=RELEASE,
+    description="Parallel analysis for ensemble simulations",
+    long_description=readme + "\n\n" + history,
+    long_description_content_type="text/x-rst",
+    author="Yuxuan Zhuang",
+    author_email="wsygzyx@gmail.com",
+    url="https://github.com/yuxuanzhuang/ENPMDA",
+    license="GNU General Public License v3",
+    packages=find_packages(
+        include=["ENPMDA", "ENPMDA.*"],
+        exclude=["tests", "tests.*", "ENPMDATests", "ENPMDATests.*"],
+    ),
+    include_package_data=True,
     zip_safe=False,
+    python_requires=">=3.10",
+    install_requires=requirements,
+    extras_require=extras_require,
+    keywords="ENPMDA MDAnalysis Dask molecular-dynamics",
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "Natural Language :: English",
+        "Programming Language :: Python :: 3 :: Only",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+    ],
 )

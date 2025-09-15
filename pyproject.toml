@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ENPMDA"
+version = "1.0.0"
+description = "Parallel analysis for ensemble simulations"
+readme = { file = "README.rst", content-type = "text/x-rst" }
+requires-python = ">=3.10"
+license = { text = "GNU General Public License v3" }
+authors = [
+  { name = "Yuxuan Zhuang", email = "wsygzyx@gmail.com" }
+]
+keywords = ["ENPMDA", "MDAnalysis", "Dask", "molecular-dynamics"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+  "MDAnalysis>=2.8.0",
+  "dask[dataframe]>=2024.1.0",
+  "distributed>=2024.1.0",
+  "numpy>=1.23",
+  "pandas>=1.5",
+  "loguru",
+]
+
+[project.optional-dependencies]
+tests = [
+  "pytest>=7",
+  "pytest-xdist>=3",
+  "numpy",
+]
+
+[project.urls]
+Homepage = "https://github.com/yuxuanzhuang/ENPMDA"
+Issues = "https://github.com/yuxuanzhuang/ENPMDA/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["ENPMDA", "ENPMDA.*"]
+exclude = ["tests", "tests.*", "ENPMDATests", "ENPMDATests.*"]
+
+# If you ship non-Python data files inside ENPMDA/*, configure them like:
+# [tool.setuptools.package-data]
+# "ENPMDA" = ["path/to/data/*"]
+
+# Optional lint/format configs (use if you like)
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]

@@ -17,6 +17,12 @@ from ENPMDATests.datafiles import (
     ensemble_ala_top,
 )
 
+def _normpath(p: str) -> str:
+    """Normalize for assertions (resolves /private/var -> /var on mac)."""
+    # preserve trailing slash behavior used in the code/tests
+    trailing = p.endswith(os.sep)
+    rp = os.path.realpath(os.path.normpath(p))
+    return rp + (os.sep if trailing and not rp.endswith(os.sep) else "")
 
 class TestDDataFrameCreation(object):
     @pytest.fixture
@@ -195,7 +201,8 @@ class TestPathNormalizationEdgeCases:
         )
         te.load_ensemble()
         expected = os.path.join(abs_path, 'skip1') + '/'
-        assert_equal(te.filename, expected, "Dot-slash + absolute was not normalized")
+        assert_equal(_normpath(te.filename),
+                    _normpath(expected), "Dot-slash + absolute was not normalized")
 
     def test_traj_ensemble_multi_skip_unique_sort(self, tempdir):
         # When multiple skip values are present, folder should be 'skip1_2' (sorted unique)
@@ -211,7 +218,8 @@ class TestPathNormalizationEdgeCases:
         )
         te.load_ensemble()
         expected = os.path.join(abs_path, 'skip1_2') + '/'
-        assert_equal(te.filename, expected, "Multi-skip folder name is incorrect")
+        assert_equal(_normpath(te.filename),
+                    _normpath(expected), "Multi-skip folder name is incorrect")
 
     def test_mddataframe_with_relative_input(self, tempdir, monkeypatch):
         # Change CWD to tempdir and pass a relative name; filename should resolve to ABS
@@ -219,14 +227,19 @@ class TestPathNormalizationEdgeCases:
         monkeypatch.chdir(tempdir)
         md = MDDataFrame(dataframe_name=subdir_name)
         expected = os.path.join(tempdir, subdir_name) + '/'
-        assert_equal(md.filename, expected, "Relative MDDataFrame path did not resolve to ABS")
+        assert_equal(_normpath(md.filename),
+                     _normpath(expected),
+                     "Relative MDDataFrame path did not resolve to ABS")
 
     def test_mddataframe_dot_slash_absolute(self, tempdir):
         abs_path = os.path.join(tempdir, 'df_dot_abs')
         weird_input = '.' + os.sep + abs_path
         md = MDDataFrame(dataframe_name=weird_input)
         expected = abs_path + '/'
-        assert_equal(md.filename, expected, "Dot-slash + absolute MDDataFrame not normalized")
+        assert_equal(
+                _normpath(md.filename),
+                _normpath(expected),
+                "Dot-slash + absolute MDDataFrame not normalized")
 
     def test_mddataframe_filename_trailing_sep(self, tempdir):
         df_path = os.path.join(tempdir, 'df_trailing')
@@ -305,7 +318,7 @@ class TestMDDataFrameSaveLoad:
             loaded = MDDataFrame.load_dataframe(candidate)
             assert isinstance(loaded, MDDataFrame)
             assert_equal(
-                loaded.filename,
-                md.filename,
+                _normpath(loaded.filename),
+                _normpath(md.filename),
                 f"Loaded MDDataFrame filename mismatch for candidate: {candidate}",
             )

@@ -1,0 +1,48 @@
+name: enpmda-test
+channels:
+  - conda-forge
+
+dependencies:
+  # Let CI decide the Python version; setup-miniconda will inject it.
+  - python
+  - pip
+  - cython<3.1
+  
+  # Runtime
+  - numpy
+  - pandas
+  - scikit-learn
+  - dask
+  - distributed
+  - bokeh
+  - tqdm
+  - loguru
+
+  # Testing
+  - pytest>=8.3
+  - pytest-xdist>=3.6
+  - pytest-cov>=4.1
+  - coverage>=7.6
+  - tox>=4.18
+
+  # Lint & format
+  - flake8>=7.1
+  - black>=24.8
+  - pylint
+
+  # Docs
+  - sphinx
+  - sphinx_rtd_theme
+
+  # Build & packaging
+  - setuptools>=70
+  - wheel>=0.42
+  - twine>=5.1
+  - bump2version>=1.0
+
+  # Optional: file watching
+  - watchdog>=4.0
+
+  - pip:
+      # Faster wrapping version of MDAnalysis (custom fork)
+      - mdanalysis @ git+https://github.com/yuxuanzhuang/mdanalysis@opt_serialization#subdirectory=package
