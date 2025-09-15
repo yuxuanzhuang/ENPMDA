@@ -227,14 +227,19 @@ class TestPathNormalizationEdgeCases:
         monkeypatch.chdir(tempdir)
         md = MDDataFrame(dataframe_name=subdir_name)
         expected = os.path.join(tempdir, subdir_name) + '/'
-        assert_equal(md.filename, expected, "Relative MDDataFrame path did not resolve to ABS")
+        assert_equal(_normpath(md.filename),
+                     _normpath(expected),
+                     "Relative MDDataFrame path did not resolve to ABS")
 
     def test_mddataframe_dot_slash_absolute(self, tempdir):
         abs_path = os.path.join(tempdir, 'df_dot_abs')
         weird_input = '.' + os.sep + abs_path
         md = MDDataFrame(dataframe_name=weird_input)
         expected = abs_path + '/'
-        assert_equal(md.filename, expected, "Dot-slash + absolute MDDataFrame not normalized")
+        assert_equal(
+                _normpath(md.filename),
+                _normpath(expected),
+                "Dot-slash + absolute MDDataFrame not normalized")
 
     def test_mddataframe_filename_trailing_sep(self, tempdir):
         df_path = os.path.join(tempdir, 'df_trailing')
