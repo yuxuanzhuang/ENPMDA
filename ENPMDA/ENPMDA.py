@@ -765,68 +765,60 @@ class MDDataFrame(object):
         """
         Load an MDDataFrame object from pickle files.
 
-        Accepts inputs like:
-        - <dir>/<base>
-        - <dir>/<base>.pickle
-        - <dir>/<base>_md_dataframe.pickle
-        Prefers '<base>_md_dataframe.pickle' (the object) over '<base>.pickle' (the raw DataFrame).
+        Accepted forms for `filename`:
+        - "base"                         → ./base/base_md_dataframe.pickle
+        - "path/to/base"                 → path/to/base/base_md_dataframe.pickle
+        - "path/to/base_md_dataframe.pickle"
+        - "path/to/base.pickle"
+
+        The loader always prefers the *_md_dataframe.pickle file.
         """
-        # --- normalize the incoming filename (handle './' + absolute, etc.) ---
-        def _normalize_user_path(p: str) -> str:
-            dot_slash = "." + os.sep
-            if p.startswith(dot_slash) and os.path.isabs(p[len(dot_slash):]):
-                p = p[len(dot_slash):]
-            return os.path.abspath(p)
+        norm = normalize_user_path(filename)
 
-        norm = _normalize_user_path(filename)
+        # Case A: explicit file with extension
+        if os.path.isfile(norm):
+            with open(norm, "rb") as f:
+                md_data = pickle.load(f)
+            if not isinstance(md_data, cls):
+                # If user pointed at the plain DataFrame, try the sibling *_md_dataframe.pickle
+                base_dir = os.path.dirname(norm)
+                base_name = os.path.basename(norm).replace(".pickle", "").replace("_md_dataframe", "")
+                sibling = os.path.join(base_dir, f"{base_name}_md_dataframe.pickle")
+                if os.path.isfile(sibling):
+                    with open(sibling, "rb") as f:
+                        md_data = pickle.load(f)
+            if not isinstance(md_data, cls):
+                raise TypeError("The loaded object is not an MDDataFrame.")
+            return md_data
 
-        # If caller passed a full file path with extension, split it;
-        # otherwise treat it as "<dir>/<base>" (no extension).
+        # Case B: user gave a base (with or without directory)
         base_dir = os.path.dirname(norm)
         base_name = os.path.basename(norm)
 
-        # Strip known extensions from base_name for consistent candidate building
-        for ext in ("_md_dataframe.pickle", ".pickle"):
-            if base_name.endswith(ext):
-                base_name = base_name[: -len(ext)]
-                break
+        # Default to ./base if no directory
+        if not base_dir:
+            base_dir = os.getcwd()
 
-        # Candidates in preferred order
-        md_obj_path   = os.path.join(base_dir, f"{base_name}_md_dataframe.pickle")
-        exact_given   = norm  # in case the caller already pointed to the md_dataframe pickle
-        base_df_path  = os.path.join(base_dir, f"{base_name}.pickle")
+        md_obj_path = os.path.join(base_dir, base_name, f"{base_name}_md_dataframe.pickle")
+        df_path     = os.path.join(base_dir, base_name, f"{base_name}.pickle")
 
         md_data = None
-
-        # 1) Prefer the MDDataFrame object pickle
         if os.path.isfile(md_obj_path):
             with open(md_obj_path, "rb") as f:
                 md_data = pickle.load(f)
-
-        # 2) Try exactly what we were given (if it's a file)
-        if md_data is None and os.path.isfile(exact_given):
-            with open(exact_given, "rb") as f:
+        elif os.path.isfile(df_path):
+            with open(df_path, "rb") as f:
                 md_data = pickle.load(f)
-
-        # 3) Fall back to the plain DataFrame pickle
-        if md_data is None and os.path.isfile(base_df_path):
-            with open(base_df_path, "rb") as f:
-                md_data = pickle.load(f)
-            # If this was the plain DataFrame, try to load the sibling MD object
-            if not isinstance(md_data, cls) and os.path.isfile(md_obj_path):
-                with open(md_obj_path, "rb") as f:
-                    md_data = pickle.load(f)
+            if not isinstance(md_data, cls):
+                raise TypeError("The loaded object is not an MDDataFrame.")
 
         if not isinstance(md_data, cls):
-            raise TypeError("The loaded dataframe is not a MDDataFrame.")
+            raise FileNotFoundError(f"No MDDataFrame found for base '{filename}'")
 
-        # --- repair paths on the loaded object (robust across hosts/CWDs) ---
-        # Ensure working_dir ends with a separator and matches the absolute directory of `filename` property.
+        # Path repair (important if moved between systems)
         md_data.working_dir = os.path.dirname(os.path.abspath(md_data.filename)) + os.sep
         if not hasattr(md_data, "init_dir"):
             md_data.init_dir = md_data.working_dir
-
-        # Point analysis_results to the correct save dir
         if hasattr(md_data, "analysis_results") and hasattr(md_data.analysis_results, "working_dir"):
             md_data.analysis_results.working_dir = md_data.filename
 
