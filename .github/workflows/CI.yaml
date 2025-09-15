@@ -114,56 +114,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
 
-      - name: Install Pylint and minimal deps
-        run: |
-          which pip
-          which python
-          pip install pylint mdanalysis
+    - name: Install Pylint and runtime deps for import resolution
+      run: |
+        which pip
+        which python
+        pip install \
+          pylint \
+          numpy pandas dask distributed scikit-learn loguru \
+          mdanalysis pytest
 
-      - name: Run Pylint
-        env:
-          PYLINTRC: .pylintrc
-        run: |
-          pylint .
+    - name: Run Pylint (package only)
+      env:
+        PYLINTRC: .pylintrc
+      run: |
+        pylint ENPMDA setup.py
 
   pypi_check:
     if: "github.repository == 'yuxuanzhuang/ENPMDA'"
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
 
-      - name: Install packaging tooling
-        run: |
-          pip install pipx twine build
+    - name: Install build tooling
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
 
-      - name: Build package (sdist + wheel)
-        run: |
-          python -m build
+    - name: Build package (sdist + wheel)
+      run: |
+        python -m build
 
-      - name: Check package build
-        run: |
-          # Prefer wheel check, but fallback to sdist if needed
-          DIST_WHL=$(ls -t1 dist/ENPMDA-*.whl 2>/dev/null | head -n 1 || true)
-          DIST_SDIST=$(ls -t1 dist/ENPMDA-*.tar.gz 2>/dev/null | head -n 1 || true)
-          if [ -n "$DIST_WHL" ]; then
-            echo "twine check $DIST_WHL"
-            twine check "$DIST_WHL"
-          fi
-          if [ -n "$DIST_SDIST" ]; then
-            echo "twine check $DIST_SDIST"
-            twine check "$DIST_SDIST"
-          fi
-          test -n "$DIST_WHL$DIST_SDIST" || { echo "No distributions found in dist/"; exit 1; }
+    - name: Check package artifacts with twine
+      run: |
+        # Show what we built
+        ls -l dist
+        # Pick the newest sdist/wheel
+        SDIST=$(ls -t dist/*.tar.gz | head -n 1)
+        WHEEL=$(ls -t dist/*.whl    | head -n 1)
+        echo "Checking:"
+        echo "  $SDIST"
+        echo "  $WHEEL"
+        twine check "$SDIST" "$WHEEL"

@@ -42,4 +42,4 @@ dependencies:
 
   - pip:
       # Faster wrapping version of MDAnalysis (custom fork)
-      - mdanalysis @ git+https://github.com/yuxuanzhuang/mdanalysis@main#subdirectory=package&egg=opt_serialization
+      - mdanalysis @ git+https://github.com/yuxuanzhuang/mdanalysis#subdirectory=package&egg=opt_serialization

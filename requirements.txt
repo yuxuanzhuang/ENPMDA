@@ -8,4 +8,4 @@ pandas>=1.5
 scikit-learn>=1.3
 
 # Custom MDAnalysis fork
-mdanalysis @ git+https://github.com/yuxuanzhuang/mdanalysis@main#subdirectory=package&egg=opt_serialization
+mdanalysis @ git+https://github.com/yuxuanzhuang/mdanalysis#subdirectory=package&egg=opt_serialization

@@ -4,7 +4,9 @@ include HISTORY.rst
 include LICENSE
 include README.rst
 
-recursive-include tests *
+prune tests
+prune .github
+prune devtools
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 

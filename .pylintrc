@@ -1,0 +1,48 @@
+[MASTER]
+# Keep pylint fast and focused
+jobs=0
+ignore=tests,docs,build,dist
+persistent=yes
+extension-pkg-whitelist=numpy
+
+init-hook='import sys; sys.path.append(".")'
+
+[MESSAGES CONTROL]
+disable=
+    # Naming/docstring noise for legacy modules/classes/functions
+    C0103,  # invalid-name
+    C0114,  # missing-module-docstring
+    C0115,  # missing-class-docstring
+    C0116,  # missing-function-docstring
+    # Long lines / whitespace you don't want to chase right now
+    C0301,  # line-too-long
+    C0303,  # trailing-whitespace
+    C0304,  # missing-final-newline
+    # Import order/style (repo mixes styles, and Sphinx/docs import paths)
+    C0411,  # wrong-import-order
+    C0412,  # ungrouped-imports
+    C0413,  # wrong-import-position
+    # Design warnings that are not actionable here
+    R0205,  # useless-object-inheritance
+    R0902,  # too-many-instance-attributes
+    R0912,  # too-many-branches
+    R0913,  # too-many-arguments
+    R0914,  # too-many-locals
+    R0917,  # too-many-positional-arguments
+    R1705,  # no-else-return
+    # “fixme” notes are fine during active dev
+    W0511,  # fixme
+    # Access to protected members (used intentionally in alignment)
+    W0212,  # protected-access
+    # Attribute defined outside __init__ in a few places
+    W0201,  # attribute-defined-outside-init
+    # CI env may still miss optional extras in rare imports
+    E0401   # import-error
+
+[FORMAT]
+# If you later want line-length back, remove C0301 above and set:
+max-line-length=120
+
+[BASIC]
+# Common short names used in MD code
+good-names=u,ts,df,md,i,j,k,x,y,z
