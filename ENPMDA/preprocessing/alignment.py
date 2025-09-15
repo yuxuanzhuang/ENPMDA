@@ -48,6 +48,24 @@ class AlignmentBase:
 
     def process_universe(self):
         raise NotImplementedError("This method must be implemented in a subclass.")
+    
+    # create a copy method with the same class instance but empty universe and output_prefix
+    def copy(self):
+        """
+        Return a shallow copy of this instance with universe and output_prefix reset.
+        Works even if subclass has a different __init__.
+        """
+        # Create a new empty instance of the same class without calling __init__
+        new_obj = self.__class__.__new__(self.__class__)
+
+        # Copy all attributes shallowly
+        new_obj.__dict__ = self.__dict__.copy()
+
+        # Reset universe and output_prefix
+        new_obj._universe = None
+        new_obj._output_prefix = None
+
+        return new_obj
 
 
 class CalphaAlignment(AlignmentBase):

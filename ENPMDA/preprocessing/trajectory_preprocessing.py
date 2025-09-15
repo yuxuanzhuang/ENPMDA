@@ -471,9 +471,10 @@ class TrajectoryEnsemble(object):
         )
         if self.alignment is not None:
             output_prefix = traj_path + "/skip" + str(skip) + "/protein_aligned"
-            self.alignment.universe = u
-            self.alignment.output_prefix = output_prefix
-            self.alignment.process_universe()
+            alignment = self.alignment.copy()
+            alignment.universe = u
+            alignment.output_prefix = output_prefix
+            alignment.process_universe()
 
             u = mda.Universe(
                 output_prefix + ".pdb",
@@ -528,3 +529,6 @@ class TrajectoryEnsemble(object):
             + '_'.join(list(np.unique(self.skip).astype(str)))
             + "/"
         )
+
+    def __len__(self):
+        return len(self.trajectory_list)
