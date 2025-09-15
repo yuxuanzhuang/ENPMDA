@@ -90,7 +90,7 @@ class get_atomic_position(DaskChunkMdanalysis):
     def run_analysis(self, universe, start, stop, step):
         ca_atoms = universe.select_atoms("protein and name CA")
         result = []
-        for ts in universe.trajectory[start:stop:step]:
+        for _ in universe.trajectory[start:stop:step]:
             result.append(
                 (ca_atoms.positions - ca_atoms.center_of_geometry()).ravel()
             )
@@ -121,6 +121,6 @@ class get_protein_hydration(DaskChunkMdanalysis):
         prot_hydration = universe.select_atoms("around 5 backbone", updating=True)
 
         n_hydration = []
-        for ts in universe.trajectory[start:stop:step]:
+        for _ in universe.trajectory[start:stop:step]:
             n_hydration.append(prot_hydration.n_atoms)
         return n_hydration
