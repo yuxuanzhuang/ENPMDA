@@ -6,7 +6,8 @@ dependencies:
   # Let CI decide the Python version; setup-miniconda will inject it.
   - python
   - pip
-
+  - cython<3.1
+  
   # Runtime
   - numpy>=1.23
   - pandas>=1.5
