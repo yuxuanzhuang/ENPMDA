@@ -1,24 +1,20 @@
 name: enpmda-test
 channels:
   - conda-forge
-  - defaults
 
 dependencies:
-  # Core Python
-  - python=3.11
+  # Let CI decide the Python version; setup-miniconda will inject it.
+  - python
   - pip
 
-  # Runtime dependencies
+  # Runtime
   - numpy>=1.23
   - pandas>=1.5
   - scikit-learn>=1.3
   - dask>=2024.1.0
   - distributed>=2024.1.0
-  - bokeh==2.4.2
+  - bokeh>=3.3,<4
   - tqdm>=4.65
-
-  # MDAnalysis (pulls from PyPI/git via pip, see pip: section)
-  - pip
 
   # Testing
   - pytest>=8.3
@@ -26,12 +22,12 @@ dependencies:
   - coverage>=7.6
   - tox>=4.18
 
-  # Linting & formatting
+  # Lint & format
   - flake8>=7.1
   - black>=24.8
   - pylint
 
-  # Documentation
+  # Docs
   - sphinx>=7.3
   - sphinx_rtd_theme
 
@@ -41,9 +37,9 @@ dependencies:
   - twine>=5.1
   - bump2version>=1.0
 
-  # File watching (optional for dev reloads)
+  # Optional: file watching
   - watchdog>=4.0
 
   - pip:
-      # faster wrapping version of MDAnalysis
+      # Faster wrapping version of MDAnalysis (custom fork)
       - mdanalysis @ git+https://github.com/yuxuanzhuang/mdanalysis@main#subdirectory=package&egg=opt_serialization
