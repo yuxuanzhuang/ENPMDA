@@ -284,11 +284,28 @@ class TestMDDataFrameSaveLoad:
     def test_save_and_load_restores_paths(self, tempdir):
         df_path = os.path.join(tempdir, 'df_saveload')
         md = MDDataFrame(dataframe_name=df_path)
-        md.dataframe.loc[0, :] = [None, None, 0, 'traj', 0, 0.0, 1]  # minimal row
-        md.computed = True  # avoid compute() inside save
-        md.save(name='dataframe', overwrite=True)
 
-        # Now load via classmethod (covers path normalization in loader)
-        loaded = MDDataFrame.load_dataframe(os.path.join(md.filename, 'dataframe'))
-        assert isinstance(loaded, MDDataFrame)
-        assert_equal(loaded.filename, md.filename, "Loaded MDDataFrame filename mismatch")
+        # minimal data to allow save()
+        md.dataframe.loc[0, :] = [None, None, 0, 'traj', 0, 0.0, 1]
+        md.computed = True
+
+        # Save with base name == directory name ('df_saveload')
+        base = 'df_saveload'
+        md.save(name=base, overwrite=True)
+
+        # Candidates:
+        # 1) base form: <dir>/<base>  → expects <dir>/<base>/<base>_md_dataframe.pickle
+        by_dir_and_base = os.path.join(tempdir, base)           # /tmp/.../df_saveload
+        # 2) explicit *_md_dataframe.pickle
+        explicit_obj_pickle = os.path.join(df_path, f'{base}_md_dataframe.pickle')
+        # 3) plain .pickle (fallback)
+        explicit_df_pickle = os.path.join(df_path, f'{base}.pickle')
+
+        for candidate in (by_dir_and_base, explicit_obj_pickle, explicit_df_pickle):
+            loaded = MDDataFrame.load_dataframe(candidate)
+            assert isinstance(loaded, MDDataFrame)
+            assert_equal(
+                loaded.filename,
+                md.filename,
+                f"Loaded MDDataFrame filename mismatch for candidate: {candidate}",
+            )
