@@ -26,9 +26,6 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import numpy as np
-
-# import awkward as ak
-
 import dask.dataframe as dd
 import dask
 import pandas as pd
@@ -39,10 +36,11 @@ import shutil
 import gc
 from tqdm import tqdm
 from sklearn import preprocessing
-
+from loguru import logger
 
 from ENPMDA.analysis.base import AnalysisResult
 from ENPMDA.preprocessing import TrajectoryEnsemble
+from ENPMDA.utils import normalize_user_path
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 meta_data_list = [
@@ -96,17 +94,30 @@ class MDDataFrame(object):
         self.computed = False
         self.sorted = False
 
-        # set working dir to absolute directory
-        if not os.path.isabs(self.dataframe_name):
-            self.working_dir = os.getcwd() + "/"
-        else:
-            self.working_dir = os.path.relpath(self.dataframe, os.getcwd())
+        # Turn whatever the user passed (name or path) into an absolute path.
+        abs_path = normalize_user_path(self.dataframe_name)
+        self.dataframe_name = os.path.basename(abs_path)
+        self.working_dir = os.path.dirname(abs_path) + os.sep
 
-        # the directory used for the first time
+        # Record the initial base directory used at creation time
         self.init_dir = self.working_dir
         self.timestamp = timestamp
+
+        # Placeholders set during later calls (e.g., add_traj_ensemble)
         self.trajectory_ensemble = None
         self.analysis_list = []
+
+        # Commonly referenced attributes (initialized to safe defaults)
+        self.npartitions = None
+        self.stride = 1
+
+        self.trajectory_files = None
+        self.trajectory_names = None
+        self.protein_trajectory_files = None
+        self.system_trajectory_files = None
+
+        self.dd_dataframe = None
+        self.analysis_results = None
 
     def add_traj_ensemble(
         self, trajectory_ensemble: TrajectoryEnsemble, npartitions, stride=1
@@ -130,6 +141,8 @@ class MDDataFrame(object):
             raise ValueError("Trajectory ensemble already added")
 
         self.trajectory_ensemble = trajectory_ensemble
+        self.trajectory_files = trajectory_ensemble.trajectory_files
+        self.trajectory_names = trajectory_ensemble.trajectory_names
 
         if trajectory_ensemble.protein_trajectory_files is None:
             warnings.warn(
@@ -138,11 +151,9 @@ class MDDataFrame(object):
                 "all analysis will be performed on the raw trajectories",
                 stacklevel=2,
             )
-            self.trajectory_files = trajectory_ensemble.trajectory_files
             self.protein_trajectory_files = trajectory_ensemble.trajectory_files
             self.system_trajectory_files = trajectory_ensemble.trajectory_files
         else:
-            self.trajectory_files = trajectory_ensemble.trajectory_files
             self.protein_trajectory_files = trajectory_ensemble.protein_trajectory_files
             self.system_trajectory_files = trajectory_ensemble.system_trajectory_files
 
@@ -168,21 +179,25 @@ class MDDataFrame(object):
 
         self.dataframe.frame = self.dataframe.frame.apply(int)
         self.dataframe.traj_time = self.dataframe.traj_time.apply(float)
+        self.dataframe.stride = self.dataframe.stride.apply(int)
 
         self._init_dd_dataframe()
 
     def _append_metadata(self, universe, system):
         universe_system = self.system_trajectory_files[system]
+        md_name = self.trajectory_names[system]
 
-        u = pickle.load(open(universe, "rb"))
-        u_sys = pickle.load(open(universe_system, "rb"))
+        with open(universe, "rb") as fh:
+            u = pickle.load(fh)
+        with open(universe_system, "rb") as fh:
+            u_sys = pickle.load(fh)
+
         if u.trajectory.n_frames != u_sys.trajectory.n_frames:
             raise ValueError(
                 f"In system {system}, number of frames in protein and system trajectories are different!"
             )
         rep_data = []
 
-        md_name = u.trajectory.filename
         timestep = u.trajectory.dt
 
         for i in range(0, u.trajectory.n_frames, self.stride):
@@ -202,9 +217,9 @@ class MDDataFrame(object):
 
     def _init_dd_dataframe(self):
         self.dd_dataframe = dd.from_pandas(self.dataframe, npartitions=self.npartitions)
-        print("Requested number of partitions: ", self.npartitions)
+        logger.info("Requested number of partitions: ", self.npartitions)
         if self.dd_dataframe.npartitions != self.npartitions:
-            print("Actual {} partitions".format(self.dd_dataframe.npartitions))
+            logger.info("Actual {} partitions".format(self.dd_dataframe.npartitions))
             self.npartitions = self.dd_dataframe.npartitions
         self.analysis_results = AnalysisResult(
             self.dd_dataframe,
@@ -241,12 +256,12 @@ class MDDataFrame(object):
             self.analysis_results.add_column_to_results(analysis, **kwargs)
             self.analysis_list.remove(analysis.name)
             self.analysis_list.append(analysis.name)
-            print(f"Analysis {analysis.name} overwritten")
+            logger.info(f"Analysis {analysis.name} overwritten")
         else:
             self.analysis_results.add_column_to_results(analysis, **kwargs)
             self.analysis_list.append(analysis.name)
 
-            print(f"Analysis {analysis.name} added")
+            logger.info(f"Analysis {analysis.name} added")
 
     def compute(self):
         """
@@ -272,12 +287,15 @@ class MDDataFrame(object):
             The name of the feature.
         """
         feat_info = np.load(
-            self.analysis_results.filename + feature_name + "_feature_info.npy"
+            self.analysis_results.filename + feature_name + "_feature_info.npy",
+            allow_pickle=True
         )
         return feat_info
 
     def get_feature(
-        self, feature_list, extra_metadata=[], in_memory=True, working_dir=None
+        self, feature_list,
+        stride=1,
+        extra_metadata=[], in_memory=True, working_dir=None
     ):
         """
         Get the features from the dataframe.
@@ -286,11 +304,17 @@ class MDDataFrame(object):
         ----------
         feature_list: list of str
             The list of features to be extracted.
+        stride: int, optional
+            The data stride to be used.
         extra_metadata: list of str, optional
             The list of extra metadata to be extracted.
         in_memory: bool, optional
             Whether to load the features in memory.
         """
+        if stride != 1:
+            raise NotImplementedError(
+                "Stride other than 1 is not implemented yet."
+            )
         meta_data = ["system", "traj_name", "frame", "traj_time"] + extra_metadata
         if not self.computed:
             self.compute()
@@ -304,24 +328,28 @@ class MDDataFrame(object):
         if in_memory:
             feature_dataframe = self.dataframe[meta_data].copy()
             for feature in feature_list:
-                raw_data = np.concatenate(
-                    [
+                feat_info = np.load(
+                    self.analysis_results.filename + feature + "_feature_info.npy",
+                    allow_pickle=True,
+                )
+                col_names = [feature + "_" + feat for feat in feat_info]
+
+                raw_data = [
                         np.load(
                             location.replace(self.init_dir, self.working_dir),
                             allow_pickle=True,
-                        )
+                        )[::stride]
                         for location, df in tqdm(
                             self.dataframe.groupby(feature, sort=False),
                             desc="Loading feature {}".format(feature),
                             total=self.dataframe[feature].nunique(),
                         )
                     ]
-                )
-                feat_info = np.load(
-                    self.analysis_results.filename + feature + "_feature_info.npy",
-                    allow_pickle=True,
-                )
-                col_names = [feature + "_" + feat for feat in feat_info]
+                
+                # concatenate it to 2D array
+                # where first dimension is the number of frames
+                # and the second dimension is the number of features
+                raw_data = np.concatenate(raw_data, axis=0)
 
                 if raw_data.ndim == 1 and len(feat_info) != 1:
                     raw_data_con = []
@@ -329,8 +357,16 @@ class MDDataFrame(object):
                         raw_data_con.append(list(raw_data_single))
                     raw_data_concat = pd.DataFrame(raw_data_con, columns=col_names)
                 else:
-                    raw_data = raw_data.reshape(raw_data.shape[0], -1)
-                    raw_data_concat = pd.DataFrame(raw_data, columns=col_names)
+                    if raw_data.ndim >= 3:
+                        out_put = {}
+                        raw_data = raw_data.reshape(raw_data.shape[0], len(col_names), -1)
+                        for col_name in col_names:
+                            out_put[col_name] = list(raw_data[:, col_names.index(col_name), :])
+                        raw_data_concat = pd.DataFrame(out_put, columns=col_names)
+                    else:
+                        raw_data = raw_data.reshape(raw_data.shape[0], -1)
+
+                        raw_data_concat = pd.DataFrame(raw_data, columns=col_names)
                 feature_dataframe = pd.concat(
                     [feature_dataframe, raw_data_concat], axis=1
                 )
@@ -398,19 +434,19 @@ class MDDataFrame(object):
             if set(md_data_old.universe_protein) != set(
                 self.dataframe.universe_protein
             ):
-                print("Seeds changed")
+                logger.info("Seeds changed")
                 self.dump(name)
 
             if md_data_old.shape[0] != self.dataframe.shape[0]:
-                print("Trajectory length changed")
+                logger.info("Trajectory length changed")
                 self.dump(name)
 
             elif set(md_data_old.columns) != set(self.dataframe.columns):
-                print("# features changed")
+                logger.info("# features changed")
 
                 old_cols = md_data_old.columns
                 new_cols = self.dataframe.columns
-                print("New: " + np.setdiff1d(new_cols, old_cols))
+                logger.info("New: " + np.setdiff1d(new_cols, old_cols))
 
                 old_extra_cols = np.setdiff1d(old_cols, new_cols)
 
@@ -426,7 +462,7 @@ class MDDataFrame(object):
                 for extra_col in extra_cols:
                     md_data_old[extra_col] = self.dataframe[extra_col]
 
-                print("Common: " + np.intersect1d(new_cols, old_cols))
+                logger.info("Common: " + np.intersect1d(new_cols, old_cols))
                 common_cols = np.intersect1d(new_cols, old_cols)
 
                 for common_col in common_cols:
@@ -435,10 +471,13 @@ class MDDataFrame(object):
                 self.dataframe = md_data_old
                 self.dump(name, backup=True)
             else:
-                print("No changes")
+                logger.info("No changes")
                 self.dump(name)
 
     def dump(self, filename, backup=False):
+        # ensure directory exists
+        os.makedirs(self.filename, exist_ok=True)
+
         if backup:
             try:
                 shutil.copyfile(
@@ -467,9 +506,9 @@ class MDDataFrame(object):
         if not self.sorted:
             for feature in self.analysis_list:
                 if self.dataframe[feature][0].split("_")[-1] == "0.npy":
-                    print(f"{feature} already sorted")
+                    logger.info(f"{feature} already sorted")
                     continue
-                print(f"start to sort {feature}.")
+                logger.info(f"start to sort {feature}.")
 
                 #                builder = ak.ArrayBuilder()
                 #                for location, df in self.dataframe.groupby(feature, sort=False):
@@ -488,7 +527,7 @@ class MDDataFrame(object):
                 )
 
                 reordered_feat_loc = []
-                for sys, df in self.dataframe.groupby(["system"]):
+                for sys, df in self.dataframe.groupby("system", sort=False):
                     sys_data = raw_data[df.index[0] : df.index[-1] + 1]
                     np.save(
                         f"{self.analysis_results.filename}{feature}_{sys}.npy", sys_data
@@ -499,7 +538,7 @@ class MDDataFrame(object):
                     )
 
                 self.dataframe[feature] = np.concatenate(reordered_feat_loc)
-                print(f"{feature} sorted.")
+                logger.info(f"{feature} sorted.")
                 del raw_data
                 gc.collect()
                 _ = [os.remove(location) for location in old_locations]
@@ -510,25 +549,34 @@ class MDDataFrame(object):
             self._init_dd_dataframe()
 
             if hasattr(self, "save_name"):
-                print(f"Saving sorted results to {self.save_name}")
+                logger.info(f"Saving sorted results to {self.save_name}")
                 self.save(self.save_name, overwrite=True)
         else:
-            print("Already sorted")
+            logger.info("Already sorted")
 
-    def add_analysis_result_from_data(self, data, feature_name, feature_info):
+    def add_analysis_result_from_data(self, data, feature_name, feature_info, overwrite=False):
         if data.shape[0] != self.dataframe.shape[0]:
-            print(
+            logger.info(
                 f"Data shape {data.shape[0]} does not match the dataframe shape {self.dataframe.shape[0]}."
             )
             return
+        
+        if data.shape[1] != len(feature_info):
+            logger.info(
+                f"Data shape {data.shape[1]} does not match the feature name length {len(feature_info)}."
+            )
+            return
 
-        if feature_name in self.analysis_list:
-            print(f"{feature_name} already exists.")
+        if feature_name in self.analysis_list and not overwrite:
+            warnings.warn(
+                f"Feature {feature_name} already added, add overwrite=True to overwrite",
+                stacklevel=2,
+            )
             return
 
         feat_locs = []
         for sys, df in tqdm(
-            self.dataframe.groupby(["system"]), total=self.dataframe.system.nunique()
+            self.dataframe.groupby("system", sort=False), total=self.dataframe.system.nunique()
         ):
             sys_data = data[df.index[0] : df.index[-1] + 1]
             np.save(
@@ -589,7 +637,7 @@ class MDDataFrame(object):
 
         feat_locs = []
         for sys, df in tqdm(
-            self.dataframe.groupby(["system"]), total=self.dataframe.system.nunique()
+            self.dataframe.groupby("system", sort=False), total=self.dataframe.system.nunique()
         ):
             sys_data = log_data[df.index[0] : df.index[-1] + 1]
             np.save(
@@ -610,7 +658,7 @@ class MDDataFrame(object):
             f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
             f"{self.analysis_results.filename}{feature_name}_log{logistic}_feature_info.npy",
         )
-        print("Finish transforming to logistic.")
+        logger.info("Finish transforming to logistic.")
         del raw_data
         gc.collect()
 
@@ -635,7 +683,7 @@ class MDDataFrame(object):
 
         feat_locs = []
         for sys, df in tqdm(
-            self.dataframe.groupby(["system"]), total=self.dataframe.system.nunique()
+            self.dataframe.groupby("system", sort=False), total=self.dataframe.system.nunique()
         ):
             sys_data = log_data[df.index[0] : df.index[-1] + 1]
             np.save(
@@ -658,7 +706,7 @@ class MDDataFrame(object):
             f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
             f"{self.analysis_results.filename}{feature_name}_logminmax{logistic}_feature_info.npy",
         )
-        print("Finish transforming to logistic.")
+        logger.info("Finish transforming to logistic.")
         del raw_data
         gc.collect()
 
@@ -685,7 +733,7 @@ class MDDataFrame(object):
 
         feat_locs = []
         for sys, df in tqdm(
-            self.dataframe.groupby(["system"]), total=self.dataframe.system.nunique()
+            self.dataframe.groupby("system", sort=False), total=self.dataframe.system.nunique()
         ):
             sys_data = raw_data[df.index[0] : df.index[-1] + 1]
             np.save(
@@ -705,7 +753,7 @@ class MDDataFrame(object):
             f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
             f"{self.analysis_results.filename}{feature_name}_reciprocal_feature_info.npy",
         )
-        print("Finish transforming to reciprocal.")
+        logger.info("Finish transforming to reciprocal.")
         del raw_data
         gc.collect()
 
@@ -715,33 +763,65 @@ class MDDataFrame(object):
     @classmethod
     def load_dataframe(cls, filename) -> "MDDataFrame":
         """
-        Load the dataframe from a pickle file.
+        Load an MDDataFrame object from pickle files.
 
-        Parameters
-        ----------
-        filename: str, optional
-            The name of the pickle file.
+        Accepted forms for `filename`:
+        - "base"                         → ./base/base_md_dataframe.pickle
+        - "path/to/base"                 → path/to/base/base_md_dataframe.pickle
+        - "path/to/base_md_dataframe.pickle"
+        - "path/to/base.pickle"
+
+        The loader always prefers the *_md_dataframe.pickle file.
         """
-        if os.path.isfile(filename):
-            print(f"Loading {filename}")
-            with open(filename, "rb") as f:
+        norm = normalize_user_path(filename)
+
+        # Case A: explicit file with extension
+        if os.path.isfile(norm):
+            with open(norm, "rb") as f:
                 md_data = pickle.load(f)
-        elif os.path.isfile(f"{filename}.pickle"):
-            print(f"Loading {filename}.pickle")
-            with open(f"{filename}.pickle", "rb") as f:
+            if not isinstance(md_data, cls):
+                # If user pointed at the plain DataFrame, try the sibling *_md_dataframe.pickle
+                base_dir = os.path.dirname(norm)
+                base_name = os.path.basename(norm).replace(".pickle", "").replace("_md_dataframe", "")
+                sibling = os.path.join(base_dir, f"{base_name}_md_dataframe.pickle")
+                if os.path.isfile(sibling):
+                    with open(sibling, "rb") as f:
+                        md_data = pickle.load(f)
+            if not isinstance(md_data, cls):
+                raise TypeError("The loaded object is not an MDDataFrame.")
+            return md_data
+
+        # Case B: user gave a base (with or without directory)
+        base_dir = os.path.dirname(norm)
+        base_name = os.path.basename(norm)
+
+        # Default to ./base if no directory
+        if not base_dir:
+            base_dir = os.getcwd()
+
+        md_obj_path = os.path.join(base_dir, base_name, f"{base_name}_md_dataframe.pickle")
+        df_path     = os.path.join(base_dir, base_name, f"{base_name}.pickle")
+
+        md_data = None
+        if os.path.isfile(md_obj_path):
+            with open(md_obj_path, "rb") as f:
                 md_data = pickle.load(f)
-        else:
-            print(f"Loading {filename}/{filename}_md_dataframe.pickle")
-            with open(f"{filename}/{filename}_md_dataframe.pickle", "rb") as f:
+        elif os.path.isfile(df_path):
+            with open(df_path, "rb") as f:
                 md_data = pickle.load(f)
-        # check if the dataframe is a MDDataFrame
+            if not isinstance(md_data, cls):
+                raise TypeError("The loaded object is not an MDDataFrame.")
+
         if not isinstance(md_data, cls):
-            raise TypeError("The loaded dataframe is not a MDDataFrame.")
-        md_data.working_dir = os.getcwd() + "/"
-        # if attribute init_dir not found
+            raise FileNotFoundError(f"No MDDataFrame found for base '{filename}'")
+
+        # Path repair (important if moved between systems)
+        md_data.working_dir = os.path.dirname(os.path.abspath(md_data.filename)) + os.sep
         if not hasattr(md_data, "init_dir"):
             md_data.init_dir = md_data.working_dir
-        md_data.analysis_results.working_dir = md_data.filename
+        if hasattr(md_data, "analysis_results") and hasattr(md_data.analysis_results, "working_dir"):
+            md_data.analysis_results.working_dir = md_data.filename
+
         return md_data
 
     @property
