@@ -84,7 +84,7 @@ class AnalysisResult(dict):
                 universe = pickle.load(f)
         else:
             with open(self.dataframe.iloc[0].universe_system, "rb") as f:
-            universe = pickle.load(f)
+                universe = pickle.load(f)
 
         feature_info = check_analysis_function.set_feature_info(universe)
         if check_analysis_function.output == "array":
