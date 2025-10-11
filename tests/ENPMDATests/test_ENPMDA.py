@@ -24,13 +24,12 @@ def _normpath(p: str) -> str:
     rp = os.path.realpath(os.path.normpath(p))
     return rp + (os.sep if trailing and not rp.endswith(os.sep) else "")
 
+
 class TestDDataFrameCreation(object):
     @pytest.fixture
     def tempdir(self):
         return tempfile.mkdtemp()
 
-    # flaky test: sometimes fails on CI due to tempdir issues
-    @pytest.mark.flaky(reruns=2)
     def test_inititialize_trajectoryensemble(self, tempdir):
         # Use absolute path; don't prefix with './'
         ensemble_path = os.path.join(tempdir, 'test_traj_ensemble')
