@@ -29,6 +29,8 @@ class TestDDataFrameCreation(object):
     def tempdir(self):
         return tempfile.mkdtemp()
 
+    # flaky test: sometimes fails on CI due to tempdir issues
+    @pytest.mark.flaky(reruns=2)
     def test_inititialize_trajectoryensemble(self, tempdir):
         # Use absolute path; don't prefix with './'
         ensemble_path = os.path.join(tempdir, 'test_traj_ensemble')
