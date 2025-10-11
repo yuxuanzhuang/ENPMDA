@@ -24,6 +24,7 @@ def _normpath(p: str) -> str:
     rp = os.path.realpath(os.path.normpath(p))
     return rp + (os.sep if trailing and not rp.endswith(os.sep) else "")
 
+
 class TestDDataFrameCreation(object):
     @pytest.fixture
     def tempdir(self):
