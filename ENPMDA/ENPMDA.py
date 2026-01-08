@@ -53,6 +53,8 @@ meta_data_list = [
     "stride",
 ]
 
+# set dask scheduler to processes
+dask.config.set(scheduler="processes")
 
 class MDDataFrame(object):
     r"""
