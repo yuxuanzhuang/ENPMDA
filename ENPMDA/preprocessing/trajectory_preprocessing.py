@@ -52,6 +52,8 @@ from ENPMDA.preprocessing.alignment import AlignmentBase
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
+# set dask scheduler to processes
+dask.config.set(scheduler="processes")
 
 class TrajectoryEnsemble(object):
     r"""Class to store an ensemble of simulations.
