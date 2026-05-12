@@ -21,6 +21,7 @@ Classes
 
 
 from datetime import datetime
+import json
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -54,6 +55,8 @@ meta_data_list = [
     "traj_time",
     "stride",
 ]
+
+PORTABLE_DATAFRAME_VERSION = 1
 
 
 class MDDataFrame(object):
@@ -100,7 +103,7 @@ class MDDataFrame(object):
         if not os.path.isabs(self.dataframe_name):
             self.working_dir = os.getcwd() + "/"
         else:
-            self.working_dir = os.path.relpath(self.dataframe, os.getcwd())
+            self.working_dir = ""
 
         # the directory used for the first time
         self.init_dir = self.working_dir
@@ -390,9 +393,14 @@ class MDDataFrame(object):
         if not os.path.exists(f"{self.filename}{name}.pickle"):
             self.dump(name)
         else:
-            md_dataframe_old = pickle.load(
-                open(f"{self.filename}{name}_md_dataframe.pickle", "rb")
-            )
+            try:
+                md_dataframe_old = pickle.load(
+                    open(f"{self.filename}{name}_md_dataframe.pickle", "rb")
+                )
+            except ModuleNotFoundError:
+                md_dataframe_old = self.load_dataframe(
+                    f"{self.filename}{name}_md_dataframe.pickle"
+                )
             md_data_old = md_dataframe_old.dataframe
 
             if set(md_data_old.universe_protein) != set(
@@ -459,6 +467,41 @@ class MDDataFrame(object):
             pickle.dump(self.dataframe, f)
         with open(f"{self.filename}{filename}_md_dataframe.pickle", "wb") as f:
             pickle.dump(self, f)
+        self._dump_portable(filename)
+
+    def _dump_portable(self, filename):
+        dataframe_file = f"{filename}.json"
+        metadata_file = f"{filename}_md_dataframe.json"
+
+        self.dataframe.to_json(
+            f"{self.filename}{dataframe_file}",
+            orient="table",
+            index=False,
+        )
+
+        metadata = {
+            "version": PORTABLE_DATAFRAME_VERSION,
+            "dataframe_file": dataframe_file,
+            "dataframe_name": self.dataframe_name,
+            "computed": self.computed,
+            "sorted": self.sorted,
+            "timestamp": self.timestamp,
+            "init_dir": self.init_dir,
+            "analysis_list": self.analysis_list,
+            "npartitions": getattr(self, "npartitions", 1),
+            "stride": getattr(self, "stride", None),
+            "save_name": getattr(self, "save_name", filename),
+        }
+        for attr in (
+            "trajectory_files",
+            "protein_trajectory_files",
+            "system_trajectory_files",
+        ):
+            if hasattr(self, attr):
+                metadata[attr] = getattr(self, attr)
+
+        with open(f"{self.filename}{metadata_file}", "w") as f:
+            json.dump(metadata, f, indent=2)
 
     def sort_analysis_result(self):
         if not self.computed:
@@ -715,34 +758,153 @@ class MDDataFrame(object):
     @classmethod
     def load_dataframe(cls, filename) -> "MDDataFrame":
         """
-        Load the dataframe from a pickle file.
+        Load the dataframe from disk.
 
         Parameters
         ----------
         filename: str, optional
-            The name of the pickle file.
+            The name of the dataframe file, pickle file, or dataframe directory.
         """
-        if os.path.isfile(filename):
-            print(f"Loading {filename}")
-            with open(filename, "rb") as f:
-                md_data = pickle.load(f)
-        elif os.path.isfile(f"{filename}.pickle"):
-            print(f"Loading {filename}.pickle")
-            with open(f"{filename}.pickle", "rb") as f:
-                md_data = pickle.load(f)
+        candidates = cls._dataframe_load_candidates(filename)
+        for path in candidates["portable"]:
+            if os.path.isfile(path):
+                print(f"Loading {path}")
+                return cls._load_portable(path)
+
+        pickle_error = None
+        for path in candidates["pickle"]:
+            if os.path.isfile(path):
+                print(f"Loading {path}")
+                try:
+                    with open(path, "rb") as f:
+                        md_data = pickle.load(f)
+                except ModuleNotFoundError as exc:
+                    pickle_error = exc
+                    try:
+                        md_data = cls._load_from_plain_dataframe_pickle(path)
+                    except FileNotFoundError:
+                        continue
+                if isinstance(md_data, cls):
+                    md_data._prepare_loaded_dataframe()
+                    return md_data
+                if isinstance(md_data, pd.DataFrame):
+                    return cls._from_dataframe(md_data, path)
+                raise TypeError("The loaded dataframe is not a MDDataFrame.")
+
+        if pickle_error is not None:
+            raise pickle_error
+        raise FileNotFoundError(f"Could not find dataframe file for {filename}.")
+
+    @classmethod
+    def _dataframe_load_candidates(cls, filename):
+        norm = os.path.normpath(filename)
+        dirname = os.path.dirname(norm)
+        basename = os.path.basename(norm)
+        stem, ext = os.path.splitext(basename)
+
+        portable = []
+        pickle_files = []
+        if ext == ".json":
+            portable.append(norm)
+        elif ext == ".pickle":
+            pickle_files.append(norm)
+            if stem.endswith("_md_dataframe"):
+                portable.append(os.path.join(dirname, f"{stem}.json"))
+                portable.append(os.path.join(dirname, f"{stem[:-13]}.json"))
+                pickle_files.append(os.path.join(dirname, f"{stem[:-13]}.pickle"))
         else:
-            print(f"Loading {filename}/{filename}_md_dataframe.pickle")
-            with open(f"{filename}/{filename}_md_dataframe.pickle", "rb") as f:
-                md_data = pickle.load(f)
-        # check if the dataframe is a MDDataFrame
-        if not isinstance(md_data, cls):
-            raise TypeError("The loaded dataframe is not a MDDataFrame.")
-        md_data.working_dir = os.getcwd() + "/"
-        # if attribute init_dir not found
-        if not hasattr(md_data, "init_dir"):
-            md_data.init_dir = md_data.working_dir
-        md_data.analysis_results.working_dir = md_data.filename
+            portable.append(f"{norm}.json")
+            portable.append(os.path.join(norm, f"{basename}_md_dataframe.json"))
+            pickle_files.append(f"{norm}.pickle")
+            pickle_files.append(os.path.join(norm, f"{basename}_md_dataframe.pickle"))
+
+        # Keep order while removing duplicates.
+        return {
+            "portable": list(dict.fromkeys(portable)),
+            "pickle": list(dict.fromkeys(pickle_files)),
+        }
+
+    @classmethod
+    def _load_portable(cls, metadata_path):
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+
+        dataframe_path = os.path.join(
+            os.path.dirname(metadata_path), metadata["dataframe_file"]
+        )
+        dataframe = pd.read_json(dataframe_path, orient="table")
+        md_data = cls._from_dataframe(
+            dataframe,
+            metadata_path,
+            dataframe_name=os.path.dirname(os.path.normpath(metadata_path)),
+            prepare=False,
+        )
+        for attr in (
+            "computed",
+            "sorted",
+            "timestamp",
+            "init_dir",
+            "analysis_list",
+            "npartitions",
+            "stride",
+            "save_name",
+            "trajectory_files",
+            "protein_trajectory_files",
+            "system_trajectory_files",
+        ):
+            if attr in metadata:
+                setattr(md_data, attr, metadata[attr])
+        md_data._prepare_loaded_dataframe()
         return md_data
+
+    @classmethod
+    def _load_from_plain_dataframe_pickle(cls, md_pickle_path):
+        dirname = os.path.dirname(md_pickle_path)
+        basename = os.path.basename(md_pickle_path)
+        stem = os.path.splitext(basename)[0]
+        if stem.endswith("_md_dataframe"):
+            dataframe_pickle = os.path.join(dirname, f"{stem[:-13]}.pickle")
+            if os.path.isfile(dataframe_pickle):
+                print(f"Falling back to {dataframe_pickle}")
+                with open(dataframe_pickle, "rb") as f:
+                    return pickle.load(f)
+        raise FileNotFoundError
+
+    @classmethod
+    def _from_dataframe(cls, dataframe, source_path, dataframe_name=None, prepare=True):
+        md_data = cls.__new__(cls)
+        source_dir = os.path.dirname(os.path.normpath(source_path))
+        md_data.dataframe_name = dataframe_name or source_dir
+        md_data.dataframe = dataframe
+        md_data.computed = True
+        md_data.sorted = False
+        md_data.working_dir = os.getcwd() + "/"
+        md_data.init_dir = md_data.working_dir
+        md_data.timestamp = timestamp
+        md_data.trajectory_ensemble = None
+        md_data.analysis_list = [
+            column for column in dataframe.columns if column not in meta_data_list
+        ]
+        md_data.npartitions = 1
+        if "stride" in dataframe.columns and len(dataframe) > 0:
+            md_data.stride = dataframe.stride.iloc[0]
+        else:
+            md_data.stride = None
+        if prepare:
+            md_data._prepare_loaded_dataframe()
+        return md_data
+
+    def _prepare_loaded_dataframe(self):
+        self.working_dir = os.getcwd() + "/"
+        if not hasattr(self, "init_dir"):
+            self.init_dir = self.working_dir
+        if not hasattr(self, "npartitions"):
+            self.npartitions = 1
+        if not hasattr(self, "analysis_list"):
+            self.analysis_list = [
+                column for column in self.dataframe.columns if column not in meta_data_list
+            ]
+        self._init_dd_dataframe()
 
     @property
     def filename(self):
