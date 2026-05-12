@@ -274,9 +274,7 @@ class MDDataFrame(object):
         feature_name: str
             The name of the feature.
         """
-        feat_info = np.load(
-            self.analysis_results.filename + feature_name + "_feature_info.npy"
-        )
+        feat_info = np.load(self._feature_info_path(feature_name), allow_pickle=True)
         return feat_info
 
     def get_feature(
@@ -310,7 +308,7 @@ class MDDataFrame(object):
                 raw_data = np.concatenate(
                     [
                         np.load(
-                            location.replace(self.init_dir, self.working_dir),
+                            self._resolve_result_path(location, working_dir),
                             allow_pickle=True,
                         )
                         for location, df in tqdm(
@@ -321,7 +319,7 @@ class MDDataFrame(object):
                     ]
                 )
                 feat_info = np.load(
-                    self.analysis_results.filename + feature + "_feature_info.npy",
+                    self._feature_info_path(feature, working_dir),
                     allow_pickle=True,
                 )
                 col_names = [feature + "_" + feat for feat in feat_info]
@@ -425,7 +423,7 @@ class MDDataFrame(object):
                 for old_extra_col in old_extra_cols:
                     self.analysis_list.append(old_extra_col)
                     shutil.copyfile(
-                        f"{md_dataframe_old.analysis_results.filename}{old_extra_col}_feature_info.npy",
+                        md_dataframe_old._feature_info_path(old_extra_col),
                         f"{self.analysis_results.filename}{old_extra_col}_feature_info.npy",
                     )
 
@@ -524,7 +522,7 @@ class MDDataFrame(object):
                 ]
                 raw_data = np.concatenate(
                     [
-                        np.load(location, allow_pickle=True)
+                        np.load(self._resolve_result_path(location), allow_pickle=True)
                         for location in old_locations
                     ],
                     axis=0,
@@ -605,7 +603,7 @@ class MDDataFrame(object):
         )
         # remove file
         file_paths = [
-            location.replace(self.init_dir, self.working_dir)
+            self._resolve_result_path(location)
             for location, df in self.dataframe.groupby(feature_name, sort=False)
         ]
         _ = [os.remove(file_path) for file_path in file_paths]
@@ -615,7 +613,7 @@ class MDDataFrame(object):
         raw_data = np.concatenate(
             [
                 np.load(
-                    location.replace(self.init_dir, self.working_dir),
+                    self._resolve_result_path(location),
                     allow_pickle=True,
                 )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
@@ -650,7 +648,7 @@ class MDDataFrame(object):
         self.analysis_list.append(f"{feature_name}_log{logistic}")
         # TODO rename features
         shutil.copyfile(
-            f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
+            self._feature_info_path(feature_name),
             f"{self.analysis_results.filename}{feature_name}_log{logistic}_feature_info.npy",
         )
         print("Finish transforming to logistic.")
@@ -666,7 +664,7 @@ class MDDataFrame(object):
         raw_data = np.concatenate(
             [
                 np.load(
-                    location.replace(self.init_dir, self.working_dir),
+                    self._resolve_result_path(location),
                     allow_pickle=True,
                 )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
@@ -698,7 +696,7 @@ class MDDataFrame(object):
         self.analysis_list.append(f"{feature_name}_logminmax{logistic}")
         # TODO rename features
         shutil.copyfile(
-            f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
+            self._feature_info_path(feature_name),
             f"{self.analysis_results.filename}{feature_name}_logminmax{logistic}_feature_info.npy",
         )
         print("Finish transforming to logistic.")
@@ -712,7 +710,7 @@ class MDDataFrame(object):
         raw_data = np.concatenate(
             [
                 np.load(
-                    location.replace(self.init_dir, self.working_dir),
+                    self._resolve_result_path(location),
                     allow_pickle=True,
                 )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
@@ -745,7 +743,7 @@ class MDDataFrame(object):
 
         # TODO rename features
         shutil.copyfile(
-            f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
+            self._feature_info_path(feature_name),
             f"{self.analysis_results.filename}{feature_name}_reciprocal_feature_info.npy",
         )
         print("Finish transforming to reciprocal.")
@@ -785,7 +783,7 @@ class MDDataFrame(object):
                     except FileNotFoundError:
                         continue
                 if isinstance(md_data, cls):
-                    md_data._prepare_loaded_dataframe()
+                    md_data._prepare_loaded_dataframe(path)
                     return md_data
                 if isinstance(md_data, pd.DataFrame):
                     return cls._from_dataframe(md_data, path)
@@ -854,7 +852,7 @@ class MDDataFrame(object):
         ):
             if attr in metadata:
                 setattr(md_data, attr, metadata[attr])
-        md_data._prepare_loaded_dataframe()
+        md_data._prepare_loaded_dataframe(metadata_path)
         return md_data
 
     @classmethod
@@ -880,7 +878,7 @@ class MDDataFrame(object):
         md_data.sorted = False
         md_data.working_dir = os.getcwd() + "/"
         md_data.init_dir = md_data.working_dir
-        md_data.timestamp = timestamp
+        md_data.timestamp = cls._infer_analysis_timestamp(dataframe) or timestamp
         md_data.trajectory_ensemble = None
         md_data.analysis_list = [
             column for column in dataframe.columns if column not in meta_data_list
@@ -891,11 +889,15 @@ class MDDataFrame(object):
         else:
             md_data.stride = None
         if prepare:
-            md_data._prepare_loaded_dataframe()
+            md_data._prepare_loaded_dataframe(source_path)
         return md_data
 
-    def _prepare_loaded_dataframe(self):
-        self.working_dir = os.getcwd() + "/"
+    def _prepare_loaded_dataframe(self, source_path=None):
+        if source_path is not None:
+            source_dir = os.path.dirname(os.path.abspath(source_path))
+            self.dataframe_name = source_dir
+            self._loaded_source_dir = source_dir
+        self.working_dir = ""
         if not hasattr(self, "init_dir"):
             self.init_dir = self.working_dir
         if not hasattr(self, "npartitions"):
@@ -905,6 +907,73 @@ class MDDataFrame(object):
                 column for column in self.dataframe.columns if column not in meta_data_list
             ]
         self._init_dd_dataframe()
+
+    def _feature_info_path(self, feature_name, working_dir=None):
+        return self._resolve_result_path(
+            self.analysis_results.filename + feature_name + "_feature_info.npy",
+            working_dir=working_dir,
+        )
+
+    def _resolve_result_path(self, path, working_dir=None):
+        path = os.fspath(path)
+        candidates = []
+
+        def add_candidate(candidate):
+            if candidate and candidate not in candidates:
+                candidates.append(candidate)
+
+        add_candidate(path)
+        if hasattr(self, "init_dir"):
+            add_candidate(path.replace(self.init_dir, self.working_dir))
+
+        result_suffix = self._analysis_result_suffix(path)
+        if result_suffix is not None:
+            for base_dir in (
+                working_dir,
+                getattr(self, "_loaded_source_dir", None),
+                self.filename,
+                os.getcwd(),
+            ):
+                if base_dir is not None:
+                    add_candidate(
+                        os.path.join(
+                            os.path.abspath(base_dir),
+                            "analysis_results",
+                            result_suffix,
+                        )
+                    )
+
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
+        raise FileNotFoundError(
+            f"Could not find result file {path}. Tried: {candidates}"
+        )
+
+    @staticmethod
+    def _analysis_result_suffix(path):
+        marker = "analysis_results" + os.sep
+        normalized = os.path.normpath(path)
+        if marker in normalized:
+            return normalized.split(marker, 1)[1]
+        alt_marker = "analysis_results/"
+        if alt_marker in path:
+            return path.split(alt_marker, 1)[1]
+        return None
+
+    @classmethod
+    def _infer_analysis_timestamp(cls, dataframe):
+        for column in dataframe.columns:
+            if column in meta_data_list:
+                continue
+            for value in dataframe[column].dropna():
+                try:
+                    result_suffix = cls._analysis_result_suffix(os.fspath(value))
+                except TypeError:
+                    continue
+                if result_suffix is not None:
+                    return result_suffix.split(os.sep, 1)[0]
+        return None
 
     @property
     def filename(self):
