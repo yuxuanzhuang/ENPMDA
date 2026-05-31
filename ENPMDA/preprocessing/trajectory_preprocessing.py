@@ -31,6 +31,7 @@ Classes
    :members:
 """
 
+import hashlib
 import os.path
 import warnings
 from datetime import datetime
@@ -93,7 +94,12 @@ class TrajectoryEnsemble(object):
             List of topology files, e.g. gro, pdb, etc.
 
         trajectory_list: list
-            List of trajectory files, e.g. xtc, trr, etc.
+            List of trajectory files, e.g. xtc, trr, etc. Each top-level
+            entry maps to the topology at the same index. An entry can also
+            be a list of trajectory files that will be loaded together, e.g.
+            ``topology_list=[top1, top2, top3]`` and
+            ``trajectory_list=[traj1, [traj2a, traj2b], traj3]`` loads
+            ``mda.Universe(top2, [traj2a, traj2b])`` for the second system.
 
         bonded_topology_list: list, optional
             List of tpr files. For providing extra bonded information.
@@ -136,6 +142,8 @@ class TrajectoryEnsemble(object):
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
         self.bonded_topology_list = bonded_topology_list
+        for trajectory in self.trajectory_list:
+            self._trajectory_paths(trajectory)
         if type(skip) is list:
             if len(skip) != len(self.trajectory_list):
                 raise ValueError(
@@ -212,24 +220,26 @@ class TrajectoryEnsemble(object):
             zip(self.topology_list, self.trajectory_list, self.skip)
         ):
             output_pdb = (
-                os.path.dirname(trajectory) + "/skip" + str(skip) + "/system.pdb"
+                self._trajectory_dir(trajectory) + "/skip" + str(skip) + "/system.pdb"
             )
-            if not os.path.isfile(output_pdb):
-                print(trajectory + " new")
+            raw_pickle = self._raw_pickle_path(trajectory)
+            trajectory_name = self._trajectory_log_name(trajectory)
+            if not os.path.isfile(output_pdb) or not os.path.isfile(raw_pickle):
+                print(trajectory_name + " new")
                 load_job_list.append(
                     delayed(self._preprocessing_raw_trajectory)(
                         topology, trajectory, skip, ind, self.protein_selection
                     )
                 )
-            elif os.path.getmtime(trajectory) > os.path.getmtime(output_pdb):
-                print(trajectory + " modified.")
+            elif self._trajectory_mtime(trajectory) > os.path.getmtime(output_pdb):
+                print(trajectory_name + " modified.")
                 load_job_list.append(
                     delayed(self._preprocessing_raw_trajectory)(
                         topology, trajectory, skip, ind, self.protein_selection
                     )
                 )
             else:
-                print(trajectory + " on hold.")
+                print(trajectory_name + " on hold.")
                 load_job_list.append(
                     delayed(self._load_preprocessing_trajectory)(trajectory)
                 )
@@ -243,7 +253,7 @@ class TrajectoryEnsemble(object):
     def _processing_protein(self):
         load_job_list = []
         for trajectory, skip in zip(self.trajectory_list, self.skip):
-            traj_path = os.path.dirname(trajectory)
+            traj_path = self._trajectory_dir(trajectory)
 
             if os.path.isfile(traj_path + "/skip" + str(skip) + "/protein.xtc"):
                 load_job_list.append(delayed(self._load_protein)(trajectory, skip))
@@ -256,7 +266,7 @@ class TrajectoryEnsemble(object):
     def _processing_system(self):
         load_job_list = []
         for trajectory, skip in zip(self.trajectory_list, self.skip):
-            traj_path = os.path.dirname(trajectory)
+            traj_path = self._trajectory_dir(trajectory)
             os.makedirs(traj_path + "/skip" + str(skip), exist_ok=True)
             if os.path.isfile(traj_path + "/skip" + str(skip) + "/system.xtc"):
                 load_job_list.append(delayed(self._load_system)(trajectory, skip))
@@ -270,12 +280,12 @@ class TrajectoryEnsemble(object):
                                       skip, ind,
                                       protein_selection="protein"):
         #    print(trajectory)
-        traj_path = os.path.dirname(trajectory)
+        traj_path = self._trajectory_dir(trajectory)
         os.makedirs(traj_path + "/skip" + str(skip), exist_ok=True)
         # to ignore most unnecessary warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            u = mda.Universe(topology, trajectory)
+            u = mda.Universe(topology, self._trajectory_input(trajectory))
 
             u_prot = u.select_atoms(protein_selection)
 
@@ -328,9 +338,7 @@ class TrajectoryEnsemble(object):
                     traj_path + "/skip" + str(skip) + "/system.pdb", bonds=None
                 )
 
-        with open(
-            self.filename + "_".join(trajectory.split("/")) + ".pickle", "wb"
-        ) as f:
+        with open(self._raw_pickle_path(trajectory), "wb") as f:
             pickle.dump(u, f)
 
         if self.only_raw:
@@ -348,36 +356,72 @@ class TrajectoryEnsemble(object):
             del u_bond
         gc.collect()
 
-        return self.filename + "_".join(trajectory.split("/")) + ".pickle"
+        return self._raw_pickle_path(trajectory)
 
     def _load_preprocessing_trajectory(self, trajectory):
-        return self.filename + "_".join(trajectory.split("/")) + ".pickle"
+        return self._raw_pickle_path(trajectory)
 
     def _load_protein(self, trajectory, skip):
-        traj_path = os.path.dirname(trajectory)
+        traj_path = self._trajectory_dir(trajectory)
         u = mda.Universe(
             traj_path + "/skip" + str(skip) + "/protein.pdb",
             traj_path + "/skip" + str(skip) + "/protein.xtc",
         )
 
-        with open(
-            self.filename + "_".join(trajectory.split("/")) + "_prot.pickle", "wb"
-        ) as f:
+        with open(self._protein_pickle_path(trajectory), "wb") as f:
             pickle.dump(u, f)
-        return self.filename + "_".join(trajectory.split("/")) + "_prot.pickle"
+        return self._protein_pickle_path(trajectory)
 
     def _load_system(self, trajectory, skip):
-        traj_path = os.path.dirname(trajectory)
+        traj_path = self._trajectory_dir(trajectory)
         u = mda.Universe(
             traj_path + "/skip" + str(skip) + "/system.pdb",
             traj_path + "/skip" + str(skip) + "/system.xtc",
         )
 
-        with open(
-            self.filename + "_".join(trajectory.split("/")) + "_sys.pickle", "wb"
-        ) as f:
+        with open(self._system_pickle_path(trajectory), "wb") as f:
             pickle.dump(u, f)
-        return self.filename + "_".join(trajectory.split("/")) + "_sys.pickle"
+        return self._system_pickle_path(trajectory)
+
+    @staticmethod
+    def _trajectory_paths(trajectory):
+        if isinstance(trajectory, (list, tuple)):
+            if len(trajectory) == 0:
+                raise ValueError("trajectory entries cannot be empty lists.")
+            return [os.fspath(traj) for traj in trajectory]
+        return [os.fspath(trajectory)]
+
+    def _trajectory_input(self, trajectory):
+        paths = self._trajectory_paths(trajectory)
+        if len(paths) == 1 and not isinstance(trajectory, (list, tuple)):
+            return paths[0]
+        return paths
+
+    def _trajectory_dir(self, trajectory):
+        return os.path.dirname(self._trajectory_paths(trajectory)[0])
+
+    def _trajectory_log_name(self, trajectory):
+        return ", ".join(self._trajectory_paths(trajectory))
+
+    def _trajectory_mtime(self, trajectory):
+        return max(os.path.getmtime(traj) for traj in self._trajectory_paths(trajectory))
+
+    def _trajectory_pickle_stem(self, trajectory):
+        paths = self._trajectory_paths(trajectory)
+        if len(paths) == 1 and not isinstance(trajectory, (list, tuple)):
+            return "_".join(paths[0].split("/"))
+
+        digest = hashlib.sha1("\0".join(paths).encode()).hexdigest()
+        return "trajectory_list_" + digest
+
+    def _raw_pickle_path(self, trajectory):
+        return self.filename + self._trajectory_pickle_stem(trajectory) + ".pickle"
+
+    def _protein_pickle_path(self, trajectory):
+        return self.filename + self._trajectory_pickle_stem(trajectory) + "_prot.pickle"
+
+    def _system_pickle_path(self, trajectory):
+        return self.filename + self._trajectory_pickle_stem(trajectory) + "_sys.pickle"
 
     @property
     def filename(self):
