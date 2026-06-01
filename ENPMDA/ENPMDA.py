@@ -21,6 +21,7 @@ Classes
 
 
 from datetime import datetime
+import json
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -55,6 +56,7 @@ meta_data_list = [
 
 # set dask scheduler to processes
 dask.config.set(scheduler="processes")
+PORTABLE_DATAFRAME_VERSION = 1
 
 class MDDataFrame(object):
     r"""
@@ -288,10 +290,7 @@ class MDDataFrame(object):
         feature_name: str
             The name of the feature.
         """
-        feat_info = np.load(
-            self.analysis_results.filename + feature_name + "_feature_info.npy",
-            allow_pickle=True
-        )
+        feat_info = np.load(self._feature_info_path(feature_name), allow_pickle=True)
         return feat_info
 
     def get_feature(
@@ -331,23 +330,23 @@ class MDDataFrame(object):
             feature_dataframe = self.dataframe[meta_data].copy()
             for feature in feature_list:
                 feat_info = np.load(
-                    self.analysis_results.filename + feature + "_feature_info.npy",
+                    self._feature_info_path(feature, working_dir),
                     allow_pickle=True,
                 )
                 col_names = [feature + "_" + feat for feat in feat_info]
 
                 raw_data = [
-                        np.load(
-                            location.replace(self.init_dir, self.working_dir),
-                            allow_pickle=True,
-                        )[::stride]
-                        for location, df in tqdm(
-                            self.dataframe.groupby(feature, sort=False),
-                            desc="Loading feature {}".format(feature),
-                            total=self.dataframe[feature].nunique(),
-                        )
-                    ]
-                
+                    np.load(
+                        self._resolve_result_path(location, working_dir),
+                        allow_pickle=True,
+                    )[::stride]
+                    for location, df in tqdm(
+                        self.dataframe.groupby(feature, sort=False),
+                        desc="Loading feature {}".format(feature),
+                        total=self.dataframe[feature].nunique(),
+                    )
+                ]
+
                 # concatenate it to 2D array
                 # where first dimension is the number of frames
                 # and the second dimension is the number of features
@@ -428,9 +427,14 @@ class MDDataFrame(object):
         if not os.path.exists(f"{self.filename}{name}.pickle"):
             self.dump(name)
         else:
-            md_dataframe_old = pickle.load(
-                open(f"{self.filename}{name}_md_dataframe.pickle", "rb")
-            )
+            try:
+                md_dataframe_old = pickle.load(
+                    open(f"{self.filename}{name}_md_dataframe.pickle", "rb")
+                )
+            except ModuleNotFoundError:
+                md_dataframe_old = self.load_dataframe(
+                    f"{self.filename}{name}_md_dataframe.pickle"
+                )
             md_data_old = md_dataframe_old.dataframe
 
             if set(md_data_old.universe_protein) != set(
@@ -455,7 +459,7 @@ class MDDataFrame(object):
                 for old_extra_col in old_extra_cols:
                     self.analysis_list.append(old_extra_col)
                     shutil.copyfile(
-                        f"{md_dataframe_old.analysis_results.filename}{old_extra_col}_feature_info.npy",
+                        md_dataframe_old._feature_info_path(old_extra_col),
                         f"{self.analysis_results.filename}{old_extra_col}_feature_info.npy",
                     )
 
@@ -500,6 +504,41 @@ class MDDataFrame(object):
             pickle.dump(self.dataframe, f)
         with open(f"{self.filename}{filename}_md_dataframe.pickle", "wb") as f:
             pickle.dump(self, f)
+        self._dump_portable(filename)
+
+    def _dump_portable(self, filename):
+        dataframe_file = f"{filename}.json"
+        metadata_file = f"{filename}_md_dataframe.json"
+
+        self.dataframe.to_json(
+            f"{self.filename}{dataframe_file}",
+            orient="table",
+            index=False,
+        )
+
+        metadata = {
+            "version": PORTABLE_DATAFRAME_VERSION,
+            "dataframe_file": dataframe_file,
+            "dataframe_name": self.dataframe_name,
+            "computed": self.computed,
+            "sorted": self.sorted,
+            "timestamp": self.timestamp,
+            "init_dir": self.init_dir,
+            "analysis_list": self.analysis_list,
+            "npartitions": getattr(self, "npartitions", 1),
+            "stride": getattr(self, "stride", None),
+            "save_name": getattr(self, "save_name", filename),
+        }
+        for attr in (
+            "trajectory_files",
+            "protein_trajectory_files",
+            "system_trajectory_files",
+        ):
+            if hasattr(self, attr):
+                metadata[attr] = getattr(self, attr)
+
+        with open(f"{self.filename}{metadata_file}", "w") as f:
+            json.dump(metadata, f, indent=2)
 
     def sort_analysis_result(self):
         if not self.computed:
@@ -522,7 +561,7 @@ class MDDataFrame(object):
                 ]
                 raw_data = np.concatenate(
                     [
-                        np.load(location, allow_pickle=True)
+                        np.load(self._resolve_result_path(location), allow_pickle=True)
                         for location in old_locations
                     ],
                     axis=0,
@@ -612,7 +651,7 @@ class MDDataFrame(object):
         )
         # remove file
         file_paths = [
-            location.replace(self.init_dir, self.working_dir)
+            self._resolve_result_path(location)
             for location, df in self.dataframe.groupby(feature_name, sort=False)
         ]
         _ = [os.remove(file_path) for file_path in file_paths]
@@ -622,7 +661,7 @@ class MDDataFrame(object):
         raw_data = np.concatenate(
             [
                 np.load(
-                    location.replace(self.init_dir, self.working_dir),
+                    self._resolve_result_path(location),
                     allow_pickle=True,
                 )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
@@ -657,7 +696,7 @@ class MDDataFrame(object):
         self.analysis_list.append(f"{feature_name}_log{logistic}")
         # TODO rename features
         shutil.copyfile(
-            f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
+            self._feature_info_path(feature_name),
             f"{self.analysis_results.filename}{feature_name}_log{logistic}_feature_info.npy",
         )
         logger.info("Finish transforming to logistic.")
@@ -673,7 +712,7 @@ class MDDataFrame(object):
         raw_data = np.concatenate(
             [
                 np.load(
-                    location.replace(self.init_dir, self.working_dir),
+                    self._resolve_result_path(location),
                     allow_pickle=True,
                 )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
@@ -705,7 +744,7 @@ class MDDataFrame(object):
         self.analysis_list.append(f"{feature_name}_logminmax{logistic}")
         # TODO rename features
         shutil.copyfile(
-            f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
+            self._feature_info_path(feature_name),
             f"{self.analysis_results.filename}{feature_name}_logminmax{logistic}_feature_info.npy",
         )
         logger.info("Finish transforming to logistic.")
@@ -719,7 +758,7 @@ class MDDataFrame(object):
         raw_data = np.concatenate(
             [
                 np.load(
-                    location.replace(self.init_dir, self.working_dir),
+                    self._resolve_result_path(location),
                     allow_pickle=True,
                 )
                 for location, df in self.dataframe.groupby(feature_name, sort=False)
@@ -752,7 +791,7 @@ class MDDataFrame(object):
 
         # TODO rename features
         shutil.copyfile(
-            f"{self.analysis_results.filename}{feature_name}_feature_info.npy",
+            self._feature_info_path(feature_name),
             f"{self.analysis_results.filename}{feature_name}_reciprocal_feature_info.npy",
         )
         logger.info("Finish transforming to reciprocal.")
@@ -765,66 +804,224 @@ class MDDataFrame(object):
     @classmethod
     def load_dataframe(cls, filename) -> "MDDataFrame":
         """
-        Load an MDDataFrame object from pickle files.
+        Load the dataframe from disk.
 
-        Accepted forms for `filename`:
-        - "base"                         → ./base/base_md_dataframe.pickle
-        - "path/to/base"                 → path/to/base/base_md_dataframe.pickle
-        - "path/to/base_md_dataframe.pickle"
-        - "path/to/base.pickle"
-
-        The loader always prefers the *_md_dataframe.pickle file.
+        Parameters
+        ----------
+        filename: str, optional
+            The name of the dataframe file, pickle file, or dataframe directory.
         """
-        norm = normalize_user_path(filename)
+        candidates = cls._dataframe_load_candidates(filename)
+        for path in candidates["portable"]:
+            if os.path.isfile(path):
+                print(f"Loading {path}")
+                return cls._load_portable(path)
 
-        # Case A: explicit file with extension
-        if os.path.isfile(norm):
-            with open(norm, "rb") as f:
-                md_data = pickle.load(f)
-            if not isinstance(md_data, cls):
-                # If user pointed at the plain DataFrame, try the sibling *_md_dataframe.pickle
-                base_dir = os.path.dirname(norm)
-                base_name = os.path.basename(norm).replace(".pickle", "").replace("_md_dataframe", "")
-                sibling = os.path.join(base_dir, f"{base_name}_md_dataframe.pickle")
-                if os.path.isfile(sibling):
-                    with open(sibling, "rb") as f:
+        pickle_error = None
+        for path in candidates["pickle"]:
+            if os.path.isfile(path):
+                print(f"Loading {path}")
+                try:
+                    with open(path, "rb") as f:
                         md_data = pickle.load(f)
-            if not isinstance(md_data, cls):
-                raise TypeError("The loaded object is not an MDDataFrame.")
-            return md_data
+                except ModuleNotFoundError as exc:
+                    pickle_error = exc
+                    try:
+                        md_data = cls._load_from_plain_dataframe_pickle(path)
+                    except FileNotFoundError:
+                        continue
+                if isinstance(md_data, cls):
+                    md_data._prepare_loaded_dataframe(path)
+                    return md_data
+                if isinstance(md_data, pd.DataFrame):
+                    return cls._from_dataframe(md_data, path)
+                raise TypeError("The loaded dataframe is not a MDDataFrame.")
 
-        # Case B: user gave a base (with or without directory)
-        base_dir = os.path.dirname(norm)
-        base_name = os.path.basename(norm)
+        if pickle_error is not None:
+            raise pickle_error
+        raise FileNotFoundError(f"Could not find dataframe file for {filename}.")
 
-        # Default to ./base if no directory
-        if not base_dir:
-            base_dir = os.getcwd()
+    @classmethod
+    def _dataframe_load_candidates(cls, filename):
+        norm = os.path.normpath(normalize_user_path(filename))
+        dirname = os.path.dirname(norm)
+        basename = os.path.basename(norm)
+        stem, ext = os.path.splitext(basename)
 
-        md_obj_path = os.path.join(base_dir, base_name, f"{base_name}_md_dataframe.pickle")
-        df_path     = os.path.join(base_dir, base_name, f"{base_name}.pickle")
+        portable = []
+        pickle_files = []
+        if ext == ".json":
+            portable.append(norm)
+        elif ext == ".pickle":
+            pickle_files.append(norm)
+            if stem.endswith("_md_dataframe"):
+                portable.append(os.path.join(dirname, f"{stem}.json"))
+                portable.append(os.path.join(dirname, f"{stem[:-13]}.json"))
+                pickle_files.append(os.path.join(dirname, f"{stem[:-13]}.pickle"))
+        else:
+            portable.append(f"{norm}.json")
+            portable.append(os.path.join(norm, f"{basename}_md_dataframe.json"))
+            pickle_files.append(f"{norm}.pickle")
+            pickle_files.append(os.path.join(norm, f"{basename}_md_dataframe.pickle"))
 
-        md_data = None
-        if os.path.isfile(md_obj_path):
-            with open(md_obj_path, "rb") as f:
-                md_data = pickle.load(f)
-        elif os.path.isfile(df_path):
-            with open(df_path, "rb") as f:
-                md_data = pickle.load(f)
-            if not isinstance(md_data, cls):
-                raise TypeError("The loaded object is not an MDDataFrame.")
+        # Keep order while removing duplicates.
+        return {
+            "portable": list(dict.fromkeys(portable)),
+            "pickle": list(dict.fromkeys(pickle_files)),
+        }
 
-        if not isinstance(md_data, cls):
-            raise FileNotFoundError(f"No MDDataFrame found for base '{filename}'")
+    @classmethod
+    def _load_portable(cls, metadata_path):
+        with open(metadata_path) as f:
+            metadata = json.load(f)
 
-        # Path repair (important if moved between systems)
-        md_data.working_dir = os.path.dirname(os.path.abspath(md_data.filename)) + os.sep
-        if not hasattr(md_data, "init_dir"):
-            md_data.init_dir = md_data.working_dir
-        if hasattr(md_data, "analysis_results") and hasattr(md_data.analysis_results, "working_dir"):
-            md_data.analysis_results.working_dir = md_data.filename
-
+        dataframe_path = os.path.join(
+            os.path.dirname(metadata_path), metadata["dataframe_file"]
+        )
+        dataframe = pd.read_json(dataframe_path, orient="table")
+        md_data = cls._from_dataframe(
+            dataframe,
+            metadata_path,
+            dataframe_name=os.path.dirname(os.path.normpath(metadata_path)),
+            prepare=False,
+        )
+        for attr in (
+            "computed",
+            "sorted",
+            "timestamp",
+            "init_dir",
+            "analysis_list",
+            "npartitions",
+            "stride",
+            "save_name",
+            "trajectory_files",
+            "protein_trajectory_files",
+            "system_trajectory_files",
+        ):
+            if attr in metadata:
+                setattr(md_data, attr, metadata[attr])
+        md_data._prepare_loaded_dataframe(metadata_path)
         return md_data
+
+    @classmethod
+    def _load_from_plain_dataframe_pickle(cls, md_pickle_path):
+        dirname = os.path.dirname(md_pickle_path)
+        basename = os.path.basename(md_pickle_path)
+        stem = os.path.splitext(basename)[0]
+        if stem.endswith("_md_dataframe"):
+            dataframe_pickle = os.path.join(dirname, f"{stem[:-13]}.pickle")
+            if os.path.isfile(dataframe_pickle):
+                print(f"Falling back to {dataframe_pickle}")
+                with open(dataframe_pickle, "rb") as f:
+                    return pickle.load(f)
+        raise FileNotFoundError
+
+    @classmethod
+    def _from_dataframe(cls, dataframe, source_path, dataframe_name=None, prepare=True):
+        md_data = cls.__new__(cls)
+        source_dir = os.path.dirname(os.path.normpath(source_path))
+        md_data.dataframe_name = dataframe_name or source_dir
+        md_data.dataframe = dataframe
+        md_data.computed = True
+        md_data.sorted = False
+        md_data.working_dir = os.getcwd() + "/"
+        md_data.init_dir = md_data.working_dir
+        md_data.timestamp = cls._infer_analysis_timestamp(dataframe) or timestamp
+        md_data.trajectory_ensemble = None
+        md_data.analysis_list = [
+            column for column in dataframe.columns if column not in meta_data_list
+        ]
+        md_data.npartitions = 1
+        if "stride" in dataframe.columns and len(dataframe) > 0:
+            md_data.stride = dataframe.stride.iloc[0]
+        else:
+            md_data.stride = None
+        if prepare:
+            md_data._prepare_loaded_dataframe(source_path)
+        return md_data
+
+    def _prepare_loaded_dataframe(self, source_path=None):
+        if source_path is not None:
+            source_dir = os.path.dirname(os.path.abspath(source_path))
+            self.dataframe_name = source_dir
+            self._loaded_source_dir = source_dir
+        self.working_dir = ""
+        if not hasattr(self, "init_dir"):
+            self.init_dir = self.working_dir
+        if not hasattr(self, "npartitions"):
+            self.npartitions = 1
+        if not hasattr(self, "analysis_list"):
+            self.analysis_list = [
+                column for column in self.dataframe.columns if column not in meta_data_list
+            ]
+        self._init_dd_dataframe()
+
+    def _feature_info_path(self, feature_name, working_dir=None):
+        return self._resolve_result_path(
+            self.analysis_results.filename + feature_name + "_feature_info.npy",
+            working_dir=working_dir,
+        )
+
+    def _resolve_result_path(self, path, working_dir=None):
+        path = os.fspath(path)
+        candidates = []
+
+        def add_candidate(candidate):
+            if candidate and candidate not in candidates:
+                candidates.append(candidate)
+
+        add_candidate(path)
+        if hasattr(self, "init_dir"):
+            add_candidate(path.replace(self.init_dir, self.working_dir))
+
+        result_suffix = self._analysis_result_suffix(path)
+        if result_suffix is not None:
+            for base_dir in (
+                working_dir,
+                getattr(self, "_loaded_source_dir", None),
+                self.filename,
+                os.getcwd(),
+            ):
+                if base_dir is not None:
+                    add_candidate(
+                        os.path.join(
+                            os.path.abspath(base_dir),
+                            "analysis_results",
+                            result_suffix,
+                        )
+                    )
+
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
+        raise FileNotFoundError(
+            f"Could not find result file {path}. Tried: {candidates}"
+        )
+
+    @staticmethod
+    def _analysis_result_suffix(path):
+        marker = "analysis_results" + os.sep
+        normalized = os.path.normpath(path)
+        if marker in normalized:
+            return normalized.split(marker, 1)[1]
+        alt_marker = "analysis_results/"
+        if alt_marker in path:
+            return path.split(alt_marker, 1)[1]
+        return None
+
+    @classmethod
+    def _infer_analysis_timestamp(cls, dataframe):
+        for column in dataframe.columns:
+            if column in meta_data_list:
+                continue
+            for value in dataframe[column].dropna():
+                try:
+                    result_suffix = cls._analysis_result_suffix(os.fspath(value))
+                except TypeError:
+                    continue
+                if result_suffix is not None:
+                    return result_suffix.split(os.sep, 1)[0]
+        return None
 
     @property
     def filename(self):

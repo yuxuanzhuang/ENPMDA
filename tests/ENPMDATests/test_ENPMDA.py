@@ -1,4 +1,6 @@
 import os
+import pickle
+import shutil
 import tempfile
 import pytest
 import numpy as np
@@ -181,6 +183,43 @@ class TestAddTrajEnsemble(object):
 
         assert_equal(md_dataframe.npartitions, 10, "npartitions not set correctly")
         assert md_dataframe.analysis_results is not None
+
+    def test_mixed_chained_trajectory_list(self, tempdir):
+        topology1 = os.path.join(tempdir, 'start1.pdb')
+        topology2 = os.path.join(tempdir, 'start2.pdb')
+        topology3 = os.path.join(tempdir, 'start3.pdb')
+        traj1 = os.path.join(tempdir, 'md1.xtc')
+        traj2a = os.path.join(tempdir, 'md2a.xtc')
+        traj2b = os.path.join(tempdir, 'md2b.xtc')
+        traj3 = os.path.join(tempdir, 'md3.xtc')
+        shutil.copyfile(ensemble_ala_top[0], topology1)
+        shutil.copyfile(ensemble_ala_top[1], topology2)
+        shutil.copyfile(ensemble_ala_top[2], topology3)
+        shutil.copyfile(ensemble_ala_traj[0], traj1)
+        shutil.copyfile(ensemble_ala_traj[1], traj2a)
+        shutil.copyfile(ensemble_ala_traj[2], traj2b)
+        shutil.copyfile(ensemble_ala_traj[3], traj3)
+
+        traj_ensemble = TrajectoryEnsemble(
+            ensemble_name=tempdir + '/test_chain_ensemble',
+            topology_list=[topology1, topology2, topology3],
+            trajectory_list=[traj1, [traj2a, traj2b], traj3],
+            updating=True,
+            only_raw=True,
+        )
+        traj_ensemble.load_ensemble()
+
+        assert_equal(len(traj_ensemble.trajectory_files), 3)
+        with open(traj_ensemble.trajectory_files[0], 'rb') as f:
+            universe1 = pickle.load(f)
+        with open(traj_ensemble.trajectory_files[1], 'rb') as f:
+            universe2 = pickle.load(f)
+        with open(traj_ensemble.trajectory_files[2], 'rb') as f:
+            universe3 = pickle.load(f)
+        assert_equal(universe1.trajectory.n_frames, 21)
+        assert_equal(universe2.trajectory.n_frames, 42)
+        assert_equal(len(universe2.trajectory.filenames), 2)
+        assert_equal(universe3.trajectory.n_frames, 21)
 
 
 class TestPathNormalizationEdgeCases:

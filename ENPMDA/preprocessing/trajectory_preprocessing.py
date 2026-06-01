@@ -31,6 +31,7 @@ Classes
    :members:
 """
 
+import hashlib
 import os.path
 import warnings
 from datetime import datetime
@@ -100,7 +101,12 @@ class TrajectoryEnsemble(object):
             List of topology files (e.g., gro, pdb, etc.).
 
         trajectory_list : list
-            List of trajectory files (e.g., xtc, trr, etc.).
+            List of trajectory files (e.g., xtc, trr, etc.). Each top-level
+            entry maps to the topology at the same index. An entry can also
+            be a list of trajectory files that will be loaded together, e.g.
+            ``topology_list=[top1, top2, top3]`` and
+            ``trajectory_list=[traj1, [traj2a, traj2b], traj3]`` loads
+            ``mda.Universe(top2, [traj2a, traj2b])`` for the second system.
 
         bonded_topology_list : list, optional
             List of topology files with bond info (e.g., tpr) for PBC/chain fixes.
@@ -164,6 +170,8 @@ class TrajectoryEnsemble(object):
         self.topology_list = topology_list
         self.trajectory_list = trajectory_list
         self.bonded_topology_list = bonded_topology_list
+        for trajectory in self.trajectory_list:
+            self._trajectory_paths(trajectory)
         self.trajectory_names = trajectory_names if trajectory_names is not None else trajectory_list
 
         # Normalize skip into a list matching #trajectories
@@ -232,48 +240,107 @@ class TrajectoryEnsemble(object):
             warnings.warn("dt is not the same for all trajectories.", stacklevel=2)
 
 
-    def _handle_same_folder_trajectory(self):
-        """Handle trajectories in the same folder by creating additional folder"""
-        
-        files_by_folder = {}
-        for file_path in self.trajectory_list:
-            folder = os.path.dirname(file_path)
-            if folder not in files_by_folder:
-                files_by_folder[folder] = []
-            files_by_folder[folder].append(file_path)
-        
-        files_by_folder = {folder: paths for folder, paths in files_by_folder.items() if len(paths) > 1}
+    @staticmethod
+    def _trajectory_paths(trajectory):
+        if isinstance(trajectory, (list, tuple)):
+            if len(trajectory) == 0:
+                raise ValueError("trajectory entries cannot be empty lists.")
+            return [os.fspath(traj) for traj in trajectory]
+        return [os.fspath(trajectory)]
 
-        if not files_by_folder:
+    def _trajectory_input(self, trajectory):
+        paths = self._trajectory_paths(trajectory)
+        if len(paths) == 1 and not isinstance(trajectory, (list, tuple)):
+            return paths[0]
+        return paths
+
+    def _trajectory_dir(self, trajectory):
+        return os.path.dirname(self._trajectory_paths(trajectory)[0])
+
+    def _trajectory_log_name(self, trajectory):
+        return ", ".join(self._trajectory_paths(trajectory))
+
+    def _trajectory_mtime(self, trajectory):
+        return max(os.path.getmtime(traj) for traj in self._trajectory_paths(trajectory))
+
+    def _trajectory_pickle_stem(self, trajectory):
+        paths = self._trajectory_paths(trajectory)
+        if len(paths) == 1 and not isinstance(trajectory, (list, tuple)):
+            return "_".join(paths[0].split("/"))
+
+        digest = hashlib.sha1("\0".join(paths).encode()).hexdigest()
+        return "trajectory_list_" + digest
+
+    def _raw_pickle_path(self, trajectory):
+        return self.filename + self._trajectory_pickle_stem(trajectory) + ".pickle"
+
+    def _protein_pickle_path(self, trajectory):
+        return self.filename + self._trajectory_pickle_stem(trajectory) + "_prot.pickle"
+
+    def _system_pickle_path(self, trajectory):
+        return self.filename + self._trajectory_pickle_stem(trajectory) + "_sys.pickle"
+
+    def _same_folder_subfolder_name(self, trajectory, index):
+        paths = self._trajectory_paths(trajectory)
+        first_name = os.path.splitext(os.path.basename(paths[0]))[0]
+        if len(paths) == 1 and not isinstance(trajectory, (list, tuple)):
+            return first_name
+
+        digest = hashlib.sha1("\0".join(paths).encode()).hexdigest()[:8]
+        return f"{first_name}_chain_{digest}_{index}"
+
+    def _link_trajectory_into_folder(self, trajectory, folder, index):
+        paths = self._trajectory_paths(trajectory)
+        new_folder_path = os.path.join(
+            folder, self._same_folder_subfolder_name(trajectory, index)
+        )
+        os.makedirs(new_folder_path, exist_ok=True)
+
+        link_paths = []
+        used_names = set()
+        for path_index, file_path in enumerate(paths):
+            file_name = os.path.basename(file_path)
+            if file_name in used_names:
+                stem, ext = os.path.splitext(file_name)
+                file_name = f"{stem}_{path_index}{ext}"
+            used_names.add(file_name)
+
+            link_path = os.path.join(new_folder_path, file_name)
+            relative_path = os.path.relpath(file_path, new_folder_path)
+            try:
+                os.symlink(relative_path, link_path)
+            except FileExistsError:
+                pass
+            link_paths.append(link_path)
+
+        if isinstance(trajectory, (list, tuple)):
+            return link_paths
+        return link_paths[0]
+
+    def _handle_same_folder_trajectory(self):
+        """Handle top-level trajectories in the same folder with subfolders."""
+
+        indices_by_folder = {}
+        for index, trajectory in enumerate(self.trajectory_list):
+            folder = self._trajectory_dir(trajectory)
+            indices_by_folder.setdefault(folder, []).append(index)
+
+        duplicate_folders = {
+            folder: indices
+            for folder, indices in indices_by_folder.items()
+            if len(indices) > 1
+        }
+
+        if not duplicate_folders:
             return
 
-        # Create a list to store the new paths in the same order
-        new_trajectory_list = []
+        new_trajectory_list = list(self.trajectory_list)
+        for folder, indices in duplicate_folders.items():
+            for index in indices:
+                new_trajectory_list[index] = self._link_trajectory_into_folder(
+                    self.trajectory_list[index], folder, index
+                )
 
-        # Create a folder for each file and create a symbolic link in its respective folder
-        for folder, file_list in files_by_folder.items():
-            for file_path in file_list:
-                # Get the file name without extension to use as the new folder name
-                file_name = os.path.basename(file_path)
-                file_name_without_ext = os.path.splitext(file_name)[0]
-
-                # Create a new folder under the current folder
-                new_folder_path = os.path.join(folder, file_name_without_ext)
-                os.makedirs(new_folder_path, exist_ok=True)
-
-                relative_path = os.path.relpath(file_path, new_folder_path)
-
-                # Create the symbolic link inside the new folder using the relative path
-                link_path = os.path.join(new_folder_path, file_name)
-                try:
-                    os.symlink(relative_path, link_path)
-                except FileExistsError:
-                    pass
-
-                # Add the new path (link path) to the new trajectory list in the same order
-                new_trajectory_list.append(link_path)
-
-        # Update self.trajectory_list to the new paths
         self.trajectory_list = new_trajectory_list
 
 
@@ -285,26 +352,32 @@ class TrajectoryEnsemble(object):
             zip(self.topology_list, self.trajectory_list, self.skip)
         ):
             output_pdb = (
-                os.path.dirname(trajectory) + "/skip" + str(skip) + "/system.pdb"
+                self._trajectory_dir(trajectory) + "/skip" + str(skip) + "/system.pdb"
             )
-            if not os.path.isfile(output_pdb) or self.regenerate_ensemble:
-                logger.info(trajectory + " new")
+            raw_pickle = self._raw_pickle_path(trajectory)
+            trajectory_name = self._trajectory_log_name(trajectory)
+            if (
+                not os.path.isfile(output_pdb)
+                or not os.path.isfile(raw_pickle)
+                or self.regenerate_ensemble
+            ):
+                logger.info(trajectory_name + " new")
                 load_job_list.append(
                     delayed(self._preprocessing_raw_trajectory)(
                         topology, trajectory, skip, ind, self.protein_selection
                     )
                 )
-            elif os.path.getmtime(trajectory) > os.path.getmtime(output_pdb):
-                logger.info(trajectory + " modified.")
+            elif self._trajectory_mtime(trajectory) > os.path.getmtime(output_pdb):
+                logger.info(trajectory_name + " modified.")
                 load_job_list.append(
                     delayed(self._preprocessing_raw_trajectory)(
                         topology, trajectory, skip, ind, self.protein_selection
                     )
                 )
             else:
-                logger.debug(trajectory + " on hold.")
+                logger.debug(trajectory_name + " on hold.")
                 # Ensure the expected pickle exists (raw-only workflows may skip writing it).
-                expected_pickle = self._load_preprocessing_trajectory(trajectory)
+                expected_pickle = self._raw_pickle_path(trajectory)
                 if self.regenerate_ensemble or not os.path.isfile(expected_pickle):
                     # (Re)generate the pickle by actually preprocessing once.
                     load_job_list.append(
@@ -324,7 +397,7 @@ class TrajectoryEnsemble(object):
     def _processing_protein(self):
         load_job_list = []
         for trajectory, skip in zip(self.trajectory_list, self.skip):
-            traj_path = os.path.dirname(trajectory)
+            traj_path = self._trajectory_dir(trajectory)
 
             if os.path.isfile(traj_path + "/skip" + str(skip) + "/protein.xtc"):
                 load_job_list.append(delayed(self._load_protein)(trajectory, skip))
@@ -337,7 +410,7 @@ class TrajectoryEnsemble(object):
     def _processing_system(self):
         load_job_list = []
         for trajectory, skip in zip(self.trajectory_list, self.skip):
-            traj_path = os.path.dirname(trajectory)
+            traj_path = self._trajectory_dir(trajectory)
             os.makedirs(traj_path + "/skip" + str(skip), exist_ok=True)
             if os.path.isfile(traj_path + "/skip" + str(skip) + "/system.xtc"):
                 load_job_list.append(delayed(self._load_system)(trajectory, skip))
@@ -351,12 +424,12 @@ class TrajectoryEnsemble(object):
                                       skip, ind,
                                       protein_selection="protein"):
         #    logger.info(trajectory)
-        traj_path = os.path.dirname(trajectory)
+        traj_path = self._trajectory_dir(trajectory)
         os.makedirs(traj_path + "/skip" + str(skip), exist_ok=True)
         # to ignore most unnecessary warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            u = mda.Universe(topology, trajectory)
+            u = mda.Universe(topology, self._trajectory_input(trajectory))
             if self.chain_info_dicts is not None:
                 self._add_chaininfo(u, self.chain_info_dicts[ind])
 
@@ -411,9 +484,7 @@ class TrajectoryEnsemble(object):
                     traj_path + "/skip" + str(skip) + "/system.pdb", bonds=None
                 )
 
-        with open(
-            self.filename + "_".join(trajectory.split("/")) + ".pickle", "wb"
-        ) as f:
+        with open(self._raw_pickle_path(trajectory), "wb") as f:
             pickle.dump(u, f)
 
         if self.only_raw:
@@ -431,7 +502,7 @@ class TrajectoryEnsemble(object):
             del u_bond
         gc.collect()
 
-        return self.filename + "_".join(trajectory.split("/")) + ".pickle"
+        return self._raw_pickle_path(trajectory)
 
     @staticmethod
     def _add_chaininfo(universe, chain_info_dict):
@@ -453,10 +524,10 @@ class TrajectoryEnsemble(object):
 
 
     def _load_preprocessing_trajectory(self, trajectory):
-        return self.filename + "_".join(trajectory.split("/")) + ".pickle"
+        return self._raw_pickle_path(trajectory)
 
     def _load_protein(self, trajectory, skip):
-        traj_path = os.path.dirname(trajectory)
+        traj_path = self._trajectory_dir(trajectory)
         top_file = traj_path + "/skip" + str(skip) + "/protein.pdb"
         xtc_file = traj_path + "/skip" + str(skip) + "/protein.xtc"
 
@@ -476,14 +547,12 @@ class TrajectoryEnsemble(object):
                 output_prefix + ".xtc",
             )
 
-        with open(
-            self.filename + "_".join(trajectory.split("/")) + "_prot.pickle", "wb"
-        ) as f:
+        with open(self._protein_pickle_path(trajectory), "wb") as f:
             pickle.dump(u, f)
-        return self.filename + "_".join(trajectory.split("/")) + "_prot.pickle"
+        return self._protein_pickle_path(trajectory)
 
     def _load_system(self, trajectory, skip):
-        traj_path = os.path.dirname(trajectory)
+        traj_path = self._trajectory_dir(trajectory)
         top_file = traj_path + "/skip" + str(skip) + "/system.pdb"
         xtc_file = traj_path + "/skip" + str(skip) + "/system.xtc"
 
@@ -507,11 +576,9 @@ class TrajectoryEnsemble(object):
                 output_prefix + ".xtc",
             )
 
-        with open(
-            self.filename + "_".join(trajectory.split("/")) + "_sys.pickle", "wb"
-        ) as f:
+        with open(self._system_pickle_path(trajectory), "wb") as f:
             pickle.dump(u, f)
-        return self.filename + "_".join(trajectory.split("/")) + "_sys.pickle"
+        return self._system_pickle_path(trajectory)
 
     @property
     def filename(self):
