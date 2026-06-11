@@ -2,7 +2,7 @@
 
 __author__ = """Yuxuan Zhuang"""
 __email__ = "wsygzyx@gmail.com"
-__version__ = "1.0.0"
+__version__ = "1.2.0"
 
 from .ENPMDA import MDDataFrame
 from .preprocessing import TrajectoryEnsemble
