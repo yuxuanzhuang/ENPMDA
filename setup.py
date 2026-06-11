@@ -5,7 +5,7 @@
 from pathlib import Path
 from setuptools import setup, find_packages
 
-RELEASE = "1.0.0"
+RELEASE = "1.2.0"
 
 readme = Path("README.rst").read_text(encoding="utf-8") if Path("README.rst").exists() else ""
 history = Path("HISTORY.rst").read_text(encoding="utf-8") if Path("HISTORY.rst").exists() else ""
